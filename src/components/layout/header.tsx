@@ -212,6 +212,7 @@ export function Header() {
     const userRole = (session?.user as any)?.role
 
     const filteredRoutes = routes.filter(route => {
+        if (userRole === "ORACULO") return true
         if (!route.roles) return true
         return route.roles.includes(userRole)
     })
