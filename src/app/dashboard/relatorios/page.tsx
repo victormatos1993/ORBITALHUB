@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { MaintenanceOverlay } from "@/components/ui/maintenance-overlay"
 
 const relatoriosData = {
     financeiro: [
@@ -240,54 +241,64 @@ export default async function RelatoriosPage() {
             </div>
 
             {/* Content Tabs */}
-            <Tabs defaultValue="todos" className="w-full">
-                <TabsList className="flex w-full md:w-auto h-auto md:inline-flex p-1 bg-muted/50 overflow-x-auto gap-2 flex-nowrap rounded-xl justify-start">
-                    <TabsTrigger value="todos" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-primary flex items-center gap-2">
-                        <Star className="h-4 w-4" />
-                        Mais Usados
-                    </TabsTrigger>
-                    <TabsTrigger value="financeiro" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
-                        <Wallet className="h-4 w-4" />
-                        Financeiro
-                    </TabsTrigger>
-                    <TabsTrigger value="vendas" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
-                        <ShoppingBag className="h-4 w-4" />
-                        Vendas
-                    </TabsTrigger>
-                    <TabsTrigger value="estoque" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
-                        <Package className="h-4 w-4" />
-                        Estoque
-                    </TabsTrigger>
-                    <TabsTrigger value="clientes" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
-                        <UsersRound className="h-4 w-4" />
-                        CRM
-                    </TabsTrigger>
-                    <TabsTrigger value="servicos" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
-                        <Wrench className="h-4 w-4" />
-                        Serviços
-                    </TabsTrigger>
-                </TabsList>
+            <div className="relative">
+                <div className="absolute inset-0 z-10">
+                    <MaintenanceOverlay
+                        title="Relatórios em Manutenção"
+                        description="Estamos refinando nossos algoritmos de inteligência para fornecer insights ainda mais precisos. Esta funcionalidade retornará em breve."
+                    />
+                </div>
+                <div className="opacity-20 pointer-events-none select-none filter blur-[2px]">
+                    <Tabs defaultValue="todos" className="w-full">
+                        <TabsList className="flex w-full md:w-auto h-auto md:inline-flex p-1 bg-muted/50 overflow-x-auto gap-2 flex-nowrap rounded-xl justify-start">
+                            <TabsTrigger value="todos" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-primary flex items-center gap-2">
+                                <Star className="h-4 w-4" />
+                                Mais Usados
+                            </TabsTrigger>
+                            <TabsTrigger value="financeiro" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
+                                <Wallet className="h-4 w-4" />
+                                Financeiro
+                            </TabsTrigger>
+                            <TabsTrigger value="vendas" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
+                                <ShoppingBag className="h-4 w-4" />
+                                Vendas
+                            </TabsTrigger>
+                            <TabsTrigger value="estoque" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
+                                <Package className="h-4 w-4" />
+                                Estoque
+                            </TabsTrigger>
+                            <TabsTrigger value="clientes" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
+                                <UsersRound className="h-4 w-4" />
+                                CRM
+                            </TabsTrigger>
+                            <TabsTrigger value="servicos" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm flex items-center gap-2">
+                                <Wrench className="h-4 w-4" />
+                                Serviços
+                            </TabsTrigger>
+                        </TabsList>
 
-                {/* Todos / Destaques */}
-                <TabsContent value="todos" className="mt-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {Object.values(relatoriosData).flat().filter((r: any) => r.destaque).map((relatorio) => (
-                            <ReportCard key={relatorio.id} {...relatorio} />
+                        {/* Todos / Destaques */}
+                        <TabsContent value="todos" className="mt-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                {Object.values(relatoriosData).flat().filter((r: any) => r.destaque).map((relatorio) => (
+                                    <ReportCard key={relatorio.id} {...relatorio} />
+                                ))}
+                            </div>
+                        </TabsContent>
+
+                        {/* Individual Categories */}
+                        {Object.entries(relatoriosData).map(([key, relatorios]) => (
+                            <TabsContent key={key} value={key} className="mt-8">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                    {relatorios.map((relatorio) => (
+                                        <ReportCard key={relatorio.id} {...relatorio} />
+                                    ))}
+                                </div>
+                            </TabsContent>
                         ))}
-                    </div>
-                </TabsContent>
-
-                {/* Individual Categories */}
-                {Object.entries(relatoriosData).map(([key, relatorios]) => (
-                    <TabsContent key={key} value={key} className="mt-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                            {relatorios.map((relatorio) => (
-                                <ReportCard key={relatorio.id} {...relatorio} />
-                            ))}
-                        </div>
-                    </TabsContent>
-                ))}
-            </Tabs>
+                    </Tabs>
+                </div>
+            </div>
         </div>
     )
 }

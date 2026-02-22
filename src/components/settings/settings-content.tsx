@@ -76,6 +76,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { MaintenanceOverlay } from "@/components/ui/maintenance-overlay"
 
 // ─── Tab configuration ───
 const settingsTabs = [
@@ -562,151 +563,159 @@ function BillingTab() {
     const trialEndDate = "24/02/2026"
 
     return (
-        <div className="space-y-6">
-            {/* Trial Banner */}
-            <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent p-5">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15">
-                        <Clock className="h-6 w-6 text-amber-500" />
-                    </div>
-                    <div className="flex-1">
-                        <h3 className="text-sm font-bold text-amber-400">
-                            Teste Gratuito — {trialDaysLeft} dias restantes
-                        </h3>
-                        <p className="text-sm text-muted-foreground mt-0.5">
-                            Seu período de teste expira em <span className="font-semibold text-foreground">{trialEndDate}</span>.
-                            Após o término, sua conta será migrada automaticamente para o plano <span className="font-semibold text-foreground">Starter</span>.
-                        </p>
-                    </div>
-                    <Button className="rounded-xl gradient-primary text-white hover:opacity-90 shrink-0 gap-1.5">
-                        <Zap className="h-4 w-4" />
-                        Assinar Agora
-                    </Button>
-                </div>
-                {/* Progress bar */}
-                <div className="mt-4 relative">
-                    <div className="h-1.5 w-full rounded-full bg-amber-500/10 overflow-hidden">
-                        <div
-                            className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all"
-                            style={{ width: `${((7 - trialDaysLeft) / 7) * 100}%` }}
-                        />
-                    </div>
-                    <div className="flex justify-between mt-1.5">
-                        <span className="text-[10px] text-muted-foreground">Início do teste</span>
-                        <span className="text-[10px] text-amber-500 font-medium">{trialDaysLeft} de 7 dias</span>
-                    </div>
-                </div>
+        <div className="relative">
+            <div className="absolute inset-0 z-10">
+                <MaintenanceOverlay
+                    title="Plano e Cobrança em Manutenção"
+                    description="Estamos finalizando as integrações com gateways de pagamento para garantir a máxima segurança em suas transações."
+                />
             </div>
-
-            {/* Plans */}
-            <SettingsCard
-                title="Planos Disponíveis"
-                description="Escolha o plano ideal para o seu negócio. Todos os planos incluem 7 dias de teste grátis."
-                badge={
-                    <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 gap-1.5 font-semibold">
-                        <Clock className="h-3.5 w-3.5" />
-                        Período de Teste
-                    </Badge>
-                }
-            >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Starter Plan */}
-                    <div className="rounded-xl border-2 border-primary bg-primary/5 p-5 relative flex flex-col">
-                        <div className="absolute -top-2.5 left-4">
-                            <Badge className="bg-primary text-white text-[10px] shadow-lg shadow-primary/25">Após o teste</Badge>
+            <div className="opacity-20 pointer-events-none select-none filter blur-[2px] space-y-6">
+                {/* Trial Banner */}
+                <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent p-5">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15">
+                            <Clock className="h-6 w-6 text-amber-500" />
                         </div>
-                        <h4 className="font-bold text-lg mt-1">Starter</h4>
-                        <p className="text-2xl font-bold mt-1">R$ 49,90<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
-                        <Separator className="my-3" />
-                        <ul className="space-y-2.5 text-sm text-muted-foreground flex-1">
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> Até 100 clientes</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> Até 200 vendas/mês</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> PDV completo</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> Relatórios básicos</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> 2 usuários</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> Suporte por e-mail</li>
-                        </ul>
-                        <Button variant="outline" className="w-full mt-5 rounded-xl border-primary/40 text-primary hover:bg-primary/10 h-11">
-                            Plano Inicial
-                        </Button>
-                    </div>
-
-                    {/* Profissional Plan */}
-                    <div className="rounded-xl border-2 border-emerald-500/50 bg-gradient-to-b from-emerald-500/5 to-transparent p-5 hover:border-emerald-500/70 transition-all relative flex flex-col shadow-lg shadow-emerald-500/5">
-                        <div className="absolute -top-2.5 right-4">
-                            <Badge className="bg-emerald-500 text-white text-[10px] shadow-lg shadow-emerald-500/25">⭐ Mais Popular</Badge>
+                        <div className="flex-1">
+                            <h3 className="text-sm font-bold text-amber-400">
+                                Teste Gratuito — {trialDaysLeft} dias restantes
+                            </h3>
+                            <p className="text-sm text-muted-foreground mt-0.5">
+                                Seu período de teste expira em <span className="font-semibold text-foreground">{trialEndDate}</span>.
+                                Após o término, sua conta será migrada automaticamente para o plano <span className="font-semibold text-foreground">Starter</span>.
+                            </p>
                         </div>
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-emerald-500/8 to-transparent rounded-bl-[48px]" />
-                        <h4 className="font-bold text-lg mt-1">Profissional</h4>
-                        <p className="text-2xl font-bold mt-1">R$ 97<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
-                        <Separator className="my-3" />
-                        <ul className="space-y-2.5 text-sm text-muted-foreground flex-1">
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Clientes ilimitados</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Vendas ilimitadas</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Emissão de NF-e</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> 5 usuários</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Relatórios avançados</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Suporte prioritário</li>
-                        </ul>
-                        <Button className="w-full mt-5 rounded-xl gradient-primary text-white hover:opacity-90 h-11 shadow-lg shadow-primary/20">
-                            <Zap className="mr-2 h-4 w-4" />
-                            Fazer Upgrade
+                        <Button className="rounded-xl gradient-primary text-white hover:opacity-90 shrink-0 gap-1.5">
+                            <Zap className="h-4 w-4" />
+                            Assinar Agora
                         </Button>
                     </div>
+                    {/* Progress bar */}
+                    <div className="mt-4 relative">
+                        <div className="h-1.5 w-full rounded-full bg-amber-500/10 overflow-hidden">
+                            <div
+                                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all"
+                                style={{ width: `${((7 - trialDaysLeft) / 7) * 100}%` }}
+                            />
+                        </div>
+                        <div className="flex justify-between mt-1.5">
+                            <span className="text-[10px] text-muted-foreground">Início do teste</span>
+                            <span className="text-[10px] text-amber-500 font-medium">{trialDaysLeft} de 7 dias</span>
+                        </div>
+                    </div>
+                </div>
 
-                    {/* Enterprise Plan */}
-                    <div className="rounded-xl border bg-card p-5 hover:border-primary/40 transition-all relative overflow-hidden flex flex-col">
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-purple-500/8 to-transparent rounded-bl-[40px]" />
-                        <h4 className="font-bold text-lg mt-1">Enterprise</h4>
-                        <p className="text-2xl font-bold mt-1">R$ 247<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
-                        <Separator className="my-3" />
-                        <ul className="space-y-2.5 text-sm text-muted-foreground flex-1">
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> Tudo do Profissional</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> Usuários ilimitados</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> API dedicada</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> Suporte dedicado</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> White-label</li>
-                            <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> SLA garantido</li>
-                        </ul>
-                        <Button variant="outline" className="w-full mt-5 rounded-xl h-11">
-                            Falar com Vendas
+                {/* Plans */}
+                <SettingsCard
+                    title="Planos Disponíveis"
+                    description="Escolha o plano ideal para o seu negócio. Todos os planos incluem 7 dias de teste grátis."
+                    badge={
+                        <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 gap-1.5 font-semibold">
+                            <Clock className="h-3.5 w-3.5" />
+                            Período de Teste
+                        </Badge>
+                    }
+                >
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Starter Plan */}
+                        <div className="rounded-xl border-2 border-primary bg-primary/5 p-5 relative flex flex-col">
+                            <div className="absolute -top-2.5 left-4">
+                                <Badge className="bg-primary text-white text-[10px] shadow-lg shadow-primary/25">Após o teste</Badge>
+                            </div>
+                            <h4 className="font-bold text-lg mt-1">Starter</h4>
+                            <p className="text-2xl font-bold mt-1">R$ 49,90<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
+                            <Separator className="my-3" />
+                            <ul className="space-y-2.5 text-sm text-muted-foreground flex-1">
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> Até 100 clientes</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> Até 200 vendas/mês</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> PDV completo</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> Relatórios básicos</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> 2 usuários</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary shrink-0" /> Suporte por e-mail</li>
+                            </ul>
+                            <Button variant="outline" className="w-full mt-5 rounded-xl border-primary/40 text-primary hover:bg-primary/10 h-11">
+                                Plano Inicial
+                            </Button>
+                        </div>
+
+                        {/* Profissional Plan */}
+                        <div className="rounded-xl border-2 border-emerald-500/50 bg-gradient-to-b from-emerald-500/5 to-transparent p-5 hover:border-emerald-500/70 transition-all relative flex flex-col shadow-lg shadow-emerald-500/5">
+                            <div className="absolute -top-2.5 right-4">
+                                <Badge className="bg-emerald-500 text-white text-[10px] shadow-lg shadow-emerald-500/25">⭐ Mais Popular</Badge>
+                            </div>
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-emerald-500/8 to-transparent rounded-bl-[48px]" />
+                            <h4 className="font-bold text-lg mt-1">Profissional</h4>
+                            <p className="text-2xl font-bold mt-1">R$ 97<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
+                            <Separator className="my-3" />
+                            <ul className="space-y-2.5 text-sm text-muted-foreground flex-1">
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Clientes ilimitados</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Vendas ilimitadas</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Emissão de NF-e</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> 5 usuários</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Relatórios avançados</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> Suporte prioritário</li>
+                            </ul>
+                            <Button className="w-full mt-5 rounded-xl gradient-primary text-white hover:opacity-90 h-11 shadow-lg shadow-primary/20">
+                                <Zap className="mr-2 h-4 w-4" />
+                                Fazer Upgrade
+                            </Button>
+                        </div>
+
+                        {/* Enterprise Plan */}
+                        <div className="rounded-xl border bg-card p-5 hover:border-primary/40 transition-all relative overflow-hidden flex flex-col">
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-purple-500/8 to-transparent rounded-bl-[40px]" />
+                            <h4 className="font-bold text-lg mt-1">Enterprise</h4>
+                            <p className="text-2xl font-bold mt-1">R$ 247<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
+                            <Separator className="my-3" />
+                            <ul className="space-y-2.5 text-sm text-muted-foreground flex-1">
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> Tudo do Profissional</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> Usuários ilimitados</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> API dedicada</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> Suporte dedicado</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> White-label</li>
+                                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-purple-400 shrink-0" /> SLA garantido</li>
+                            </ul>
+                            <Button variant="outline" className="w-full mt-5 rounded-xl h-11">
+                                Falar com Vendas
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-4 p-3 rounded-xl bg-muted/20 text-xs text-muted-foreground">
+                        <Info className="h-4 w-4 shrink-0" />
+                        <span>Todos os planos incluem acesso completo durante os 7 dias de teste. Cancele a qualquer momento sem cobrança.</span>
+                    </div>
+                </SettingsCard>
+
+                {/* Payment Method */}
+                <SettingsCard title="Método de Pagamento" description="Adicione um método de pagamento para continuar usando após o período de teste.">
+                    <div className="flex items-center gap-4 p-4 rounded-xl border bg-muted/20">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
+                            <CreditCard className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-sm text-muted-foreground">Nenhum método de pagamento cadastrado</p>
+                            <p className="text-xs text-muted-foreground/60 mt-0.5">Adicione um cartão para garantir a continuidade após o teste</p>
+                        </div>
+                        <Button variant="outline" size="sm" className="rounded-xl gap-1.5">
+                            <Plus className="h-4 w-4" />
+                            Adicionar Cartão
                         </Button>
                     </div>
-                </div>
+                </SettingsCard>
 
-                <div className="flex items-center gap-2 mt-4 p-3 rounded-xl bg-muted/20 text-xs text-muted-foreground">
-                    <Info className="h-4 w-4 shrink-0" />
-                    <span>Todos os planos incluem acesso completo durante os 7 dias de teste. Cancele a qualquer momento sem cobrança.</span>
-                </div>
-            </SettingsCard>
-
-            {/* Payment Method */}
-            <SettingsCard title="Método de Pagamento" description="Adicione um método de pagamento para continuar usando após o período de teste.">
-                <div className="flex items-center gap-4 p-4 rounded-xl border bg-muted/20">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
-                        <CreditCard className="h-6 w-6 text-muted-foreground" />
+                {/* Payment History */}
+                <SettingsCard title="Histórico de Pagamentos" description="Visualize seus pagamentos e baixe as notas fiscais.">
+                    <div className="flex flex-col items-center justify-center py-12 gap-3">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/50">
+                            <FileText className="h-7 w-7 text-muted-foreground/40" />
+                        </div>
+                        <p className="text-sm font-medium text-muted-foreground">Nenhum pagamento realizado</p>
+                        <p className="text-xs text-muted-foreground/60">Você está no período de teste gratuito. Pagamentos aparecerão aqui após a assinatura.</p>
                     </div>
-                    <div className="flex-1">
-                        <p className="text-sm text-muted-foreground">Nenhum método de pagamento cadastrado</p>
-                        <p className="text-xs text-muted-foreground/60 mt-0.5">Adicione um cartão para garantir a continuidade após o teste</p>
-                    </div>
-                    <Button variant="outline" size="sm" className="rounded-xl gap-1.5">
-                        <Plus className="h-4 w-4" />
-                        Adicionar Cartão
-                    </Button>
-                </div>
-            </SettingsCard>
-
-            {/* Payment History */}
-            <SettingsCard title="Histórico de Pagamentos" description="Visualize seus pagamentos e baixe as notas fiscais.">
-                <div className="flex flex-col items-center justify-center py-12 gap-3">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/50">
-                        <FileText className="h-7 w-7 text-muted-foreground/40" />
-                    </div>
-                    <p className="text-sm font-medium text-muted-foreground">Nenhum pagamento realizado</p>
-                    <p className="text-xs text-muted-foreground/60">Você está no período de teste gratuito. Pagamentos aparecerão aqui após a assinatura.</p>
-                </div>
-            </SettingsCard>
+                </SettingsCard>
+            </div>
         </div>
     )
 }
@@ -716,123 +725,131 @@ function FiscalTab() {
     const [provider, setProvider] = useState("")
 
     return (
-        <div className="space-y-6">
-            {/* Status Overview */}
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5">
-                <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
-                        <AlertTriangle className="h-5 w-5 text-amber-500" />
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-semibold text-amber-500">Emissão de NF-e não configurada</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            Para emitir notas fiscais, você precisa configurar um provedor de emissão e cadastrar o certificado digital da sua empresa.
-                        </p>
-                    </div>
-                </div>
+        <div className="relative">
+            <div className="absolute inset-0 z-10">
+                <MaintenanceOverlay
+                    title="Emissão Fiscal em Manutenção"
+                    description="Estamos certificando nosso motor de emissão de notas fiscais com os órgãos reguladores para garantir conformidade total."
+                />
             </div>
-
-            {/* Provider Selection */}
-            <SettingsCard title="Provedor de NF-e" description="Selecione e configure o provedor que irá processar suas notas fiscais.">
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Provedor</Label>
-                        <Select value={provider} onValueChange={setProvider}>
-                            <SelectTrigger className="rounded-xl">
-                                <SelectValue placeholder="Selecione um provedor..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="nuvemfiscal">🔵 Nuvem Fiscal</SelectItem>
-                                <SelectItem value="focusnfe">🟢 Focus NFe</SelectItem>
-                                <SelectItem value="plugnotas">🟡 Plug Notas</SelectItem>
-                                <SelectItem value="enotas">🟣 eNotas</SelectItem>
-                                <SelectItem value="webmania">🔴 Webmania</SelectItem>
-                            </SelectContent>
-                        </Select>
+            <div className="opacity-20 pointer-events-none select-none filter blur-[2px] space-y-6">
+                {/* Status Overview */}
+                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5">
+                    <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
+                            <AlertTriangle className="h-5 w-5 text-amber-500" />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-semibold text-amber-500">Emissão de NF-e não configurada</h3>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                Para emitir notas fiscais, você precisa configurar um provedor de emissão e cadastrar o certificado digital da sua empresa.
+                            </p>
+                        </div>
                     </div>
+                </div>
 
-                    {provider && (
-                        <>
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium">Token / API Key</Label>
-                                <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                    <Input placeholder="Cole aqui o token fornecido pelo provedor" className="rounded-xl pl-10 font-mono text-sm" type="password" />
+                {/* Provider Selection */}
+                <SettingsCard title="Provedor de NF-e" description="Selecione e configure o provedor que irá processar suas notas fiscais.">
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Provedor</Label>
+                            <Select value={provider} onValueChange={setProvider}>
+                                <SelectTrigger className="rounded-xl">
+                                    <SelectValue placeholder="Selecione um provedor..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="nuvemfiscal">🔵 Nuvem Fiscal</SelectItem>
+                                    <SelectItem value="focusnfe">🟢 Focus NFe</SelectItem>
+                                    <SelectItem value="plugnotas">🟡 Plug Notas</SelectItem>
+                                    <SelectItem value="enotas">🟣 eNotas</SelectItem>
+                                    <SelectItem value="webmania">🔴 Webmania</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {provider && (
+                            <>
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">Token / API Key</Label>
+                                    <div className="relative">
+                                        <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                        <Input placeholder="Cole aqui o token fornecido pelo provedor" className="rounded-xl pl-10 font-mono text-sm" type="password" />
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">Você encontra esse token no painel do provedor selecionado.</p>
                                 </div>
-                                <p className="text-xs text-muted-foreground">Você encontra esse token no painel do provedor selecionado.</p>
-                            </div>
 
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium">Ambiente</Label>
-                                <Select defaultValue="homologacao">
-                                    <SelectTrigger className="rounded-xl">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="homologacao">🧪 Homologação (Testes)</SelectItem>
-                                        <SelectItem value="producao">🚀 Produção</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </>
-                    )}
-                </div>
-                <div className="flex justify-end mt-6">
-                    <Button className="rounded-xl gradient-primary text-white hover:opacity-90" disabled={!provider} onClick={() => toast.success("Provedor configurado!")}>
-                        Salvar Configuração
-                    </Button>
-                </div>
-            </SettingsCard>
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">Ambiente</Label>
+                                    <Select defaultValue="homologacao">
+                                        <SelectTrigger className="rounded-xl">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="homologacao">🧪 Homologação (Testes)</SelectItem>
+                                            <SelectItem value="producao">🚀 Produção</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    <div className="flex justify-end mt-6">
+                        <Button className="rounded-xl gradient-primary text-white hover:opacity-90" disabled={!provider} onClick={() => toast.success("Provedor configurado!")}>
+                            Salvar Configuração
+                        </Button>
+                    </div>
+                </SettingsCard>
 
-            {/* Digital Certificate */}
-            <SettingsCard title="Certificado Digital" description="Faça upload do certificado digital e-CNPJ A1 (.pfx) da sua empresa.">
-                <div className="flex items-center gap-4 p-5 rounded-xl border-2 border-dashed border-border bg-muted/10 hover:border-primary/40 transition-colors cursor-pointer relative">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-muted">
-                        <Shield className="h-7 w-7 text-muted-foreground/40" />
+                {/* Digital Certificate */}
+                <SettingsCard title="Certificado Digital" description="Faça upload do certificado digital e-CNPJ A1 (.pfx) da sua empresa.">
+                    <div className="flex items-center gap-4 p-5 rounded-xl border-2 border-dashed border-border bg-muted/10 hover:border-primary/40 transition-colors cursor-pointer relative">
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-muted">
+                            <Shield className="h-7 w-7 text-muted-foreground/40" />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-sm font-medium">Nenhum certificado cadastrado</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Arraste ou clique para enviar seu certificado digital (.pfx)</p>
+                        </div>
+                        <Button variant="outline" size="sm" className="rounded-xl gap-1.5 shrink-0">
+                            <Upload className="h-4 w-4" />
+                            Enviar Certificado
+                        </Button>
+                        <input type="file" accept=".pfx,.p12" className="absolute inset-0 opacity-0 cursor-pointer" />
                     </div>
-                    <div className="flex-1">
-                        <p className="text-sm font-medium">Nenhum certificado cadastrado</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Arraste ou clique para enviar seu certificado digital (.pfx)</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Senha do Certificado</Label>
+                            <Input type="password" placeholder="Senha do arquivo .pfx" className="rounded-xl" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Validade</Label>
+                            <Input placeholder="Será preenchido automaticamente" className="rounded-xl" disabled />
+                        </div>
                     </div>
-                    <Button variant="outline" size="sm" className="rounded-xl gap-1.5 shrink-0">
-                        <Upload className="h-4 w-4" />
-                        Enviar Certificado
-                    </Button>
-                    <input type="file" accept=".pfx,.p12" className="absolute inset-0 opacity-0 cursor-pointer" />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Senha do Certificado</Label>
-                        <Input type="password" placeholder="Senha do arquivo .pfx" className="rounded-xl" />
-                    </div>
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Validade</Label>
-                        <Input placeholder="Será preenchido automaticamente" className="rounded-xl" disabled />
-                    </div>
-                </div>
-            </SettingsCard>
+                </SettingsCard>
 
-            {/* NF-e Config */}
-            <SettingsCard title="Configurações da NF-e" description="Defina os parâmetros padrão para emissão de notas fiscais.">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Série da NF-e</Label>
-                        <Input placeholder="1" defaultValue="1" className="rounded-xl" />
+                {/* NF-e Config */}
+                <SettingsCard title="Configurações da NF-e" description="Defina os parâmetros padrão para emissão de notas fiscais.">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Série da NF-e</Label>
+                            <Input placeholder="1" defaultValue="1" className="rounded-xl" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Próximo Nº da NF-e</Label>
+                            <Input placeholder="1" defaultValue="1" className="rounded-xl" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Natureza da Operação</Label>
+                            <Input placeholder="Venda de mercadoria" defaultValue="Venda de mercadoria" className="rounded-xl" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Informações Complementares</Label>
+                            <Textarea placeholder="Texto padrão para informações complementares da NF-e" className="rounded-xl resize-none" rows={2} />
+                        </div>
                     </div>
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Próximo Nº da NF-e</Label>
-                        <Input placeholder="1" defaultValue="1" className="rounded-xl" />
-                    </div>
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Natureza da Operação</Label>
-                        <Input placeholder="Venda de mercadoria" defaultValue="Venda de mercadoria" className="rounded-xl" />
-                    </div>
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Informações Complementares</Label>
-                        <Textarea placeholder="Texto padrão para informações complementares da NF-e" className="rounded-xl resize-none" rows={2} />
-                    </div>
-                </div>
-            </SettingsCard>
+                </SettingsCard>
+            </div>
         </div>
     )
 }
@@ -840,45 +857,53 @@ function FiscalTab() {
 // ═══════════ NOTIFICATIONS TAB ═══════════
 function NotificationsTab() {
     return (
-        <div className="space-y-6">
-            <SettingsCard title="Notificações por E-mail" description="Escolha quais notificações deseja receber por e-mail.">
-                <div className="space-y-4">
-                    {[
-                        { title: "Vendas realizadas", desc: "Receba um e-mail para cada venda finalizada no PDV.", default: true },
-                        { title: "Pagamentos recebidos", desc: "Notificação quando um pagamento pendente for confirmado.", default: true },
-                        { title: "Contas a pagar vencendo", desc: "Alerta 3 dias antes do vencimento de contas a pagar.", default: true },
-                        { title: "Estoque baixo", desc: "Aviso quando o estoque de um produto atingir o mínimo.", default: false },
-                        { title: "Novo cliente cadastrado", desc: "Notificação quando um novo cliente se cadastrar.", default: false },
-                        { title: "Relatório semanal", desc: "Resumo semanal com faturamento, vendas e métricas.", default: true },
-                    ].map((item) => (
-                        <div key={item.title} className="flex items-center justify-between py-2">
-                            <div>
-                                <p className="text-sm font-medium">{item.title}</p>
-                                <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
+        <div className="relative">
+            <div className="absolute inset-0 z-10">
+                <MaintenanceOverlay
+                    title="Notificações em Manutenção"
+                    description="Estamos aprimorando nosso sistema de mensageria para incluir alertas via WhatsApp e SMS em tempo real."
+                />
+            </div>
+            <div className="opacity-20 pointer-events-none select-none filter blur-[2px] space-y-6">
+                <SettingsCard title="Notificações por E-mail" description="Escolha quais notificações deseja receber por e-mail.">
+                    <div className="space-y-4">
+                        {[
+                            { title: "Vendas realizadas", desc: "Receba um e-mail para cada venda finalizada no PDV.", default: true },
+                            { title: "Pagamentos recebidos", desc: "Notificação quando um pagamento pendente for confirmado.", default: true },
+                            { title: "Contas a pagar vencendo", desc: "Alerta 3 dias antes do vencimento de contas a pagar.", default: true },
+                            { title: "Estoque baixo", desc: "Aviso quando o estoque de um produto atingir o mínimo.", default: false },
+                            { title: "Novo cliente cadastrado", desc: "Notificação quando um novo cliente se cadastrar.", default: false },
+                            { title: "Relatório semanal", desc: "Resumo semanal com faturamento, vendas e métricas.", default: true },
+                        ].map((item) => (
+                            <div key={item.title} className="flex items-center justify-between py-2">
+                                <div>
+                                    <p className="text-sm font-medium">{item.title}</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
+                                </div>
+                                <Switch defaultChecked={item.default} />
                             </div>
-                            <Switch defaultChecked={item.default} />
-                        </div>
-                    ))}
-                </div>
-            </SettingsCard>
+                        ))}
+                    </div>
+                </SettingsCard>
 
-            <SettingsCard title="Notificações no Sistema" description="Configurações de notificações dentro do Orbital Hub.">
-                <div className="space-y-4">
-                    {[
-                        { title: "Som de notificação", desc: "Tocar um som ao receber notificações no sistema.", default: true },
-                        { title: "Notificações push", desc: "Receber notificações push no navegador.", default: false },
-                        { title: "Alertas de NF-e", desc: "Notificar sobre status de notas fiscais (autorizada, rejeitada).", default: true },
-                    ].map((item) => (
-                        <div key={item.title} className="flex items-center justify-between py-2">
-                            <div>
-                                <p className="text-sm font-medium">{item.title}</p>
-                                <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
+                <SettingsCard title="Notificações no Sistema" description="Configurações de notificações dentro do Orbital Hub.">
+                    <div className="space-y-4">
+                        {[
+                            { title: "Som de notificação", desc: "Tocar um som ao receber notificações no sistema.", default: true },
+                            { title: "Notificações push", desc: "Receber notificações push no navegador.", default: false },
+                            { title: "Alertas de NF-e", desc: "Notificar sobre status de notas fiscais (autorizada, rejeitada).", default: true },
+                        ].map((item) => (
+                            <div key={item.title} className="flex items-center justify-between py-2">
+                                <div>
+                                    <p className="text-sm font-medium">{item.title}</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
+                                </div>
+                                <Switch defaultChecked={item.default} />
                             </div>
-                            <Switch defaultChecked={item.default} />
-                        </div>
-                    ))}
-                </div>
-            </SettingsCard>
+                        ))}
+                    </div>
+                </SettingsCard>
+            </div>
         </div>
     )
 }
@@ -886,118 +911,126 @@ function NotificationsTab() {
 // ═══════════ APPEARANCE TAB ═══════════
 function AppearanceTab() {
     return (
-        <div className="space-y-6">
-            <SettingsCard title="Tema" description="Personalize a aparência do sistema.">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* Dark Theme */}
-                    <button
-                        className="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-primary bg-primary/5 transition-all hover:border-primary/60"
-                    >
-                        <div className="h-20 w-full rounded-lg border border-white/5 bg-[#0a0f1e] p-2 flex flex-col gap-1 overflow-hidden">
-                            <div className="flex gap-1">
-                                <div className="w-3 h-full rounded-sm bg-white/10" />
-                                <div className="flex-1 flex flex-col gap-1">
-                                    <div className="h-2 w-3/4 rounded bg-white/15" />
-                                    <div className="h-1.5 w-1/2 rounded bg-white/8" />
-                                    <div className="flex-1 rounded bg-white/5 mt-0.5" />
+        <div className="relative">
+            <div className="absolute inset-0 z-10">
+                <MaintenanceOverlay
+                    title="Aparência em Manutenção"
+                    description="Em breve você poderá personalizar cada detalhe visual do Orbital Hub, incluindo cores da marca e layouts exclusivos."
+                />
+            </div>
+            <div className="opacity-20 pointer-events-none select-none filter blur-[2px] space-y-6">
+                <SettingsCard title="Tema" description="Personalize a aparência do sistema.">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* Dark Theme */}
+                        <button
+                            className="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-primary bg-primary/5 transition-all hover:border-primary/60"
+                        >
+                            <div className="h-20 w-full rounded-lg border border-white/5 bg-[#0a0f1e] p-2 flex flex-col gap-1 overflow-hidden">
+                                <div className="flex gap-1">
+                                    <div className="w-3 h-full rounded-sm bg-white/10" />
+                                    <div className="flex-1 flex flex-col gap-1">
+                                        <div className="h-2 w-3/4 rounded bg-white/15" />
+                                        <div className="h-1.5 w-1/2 rounded bg-white/8" />
+                                        <div className="flex-1 rounded bg-white/5 mt-0.5" />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <Check className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-medium">Escuro</span>
-                        </div>
-                    </button>
+                            <div className="flex items-center gap-1.5">
+                                <Check className="h-4 w-4 text-primary" />
+                                <span className="text-sm font-medium">Escuro</span>
+                            </div>
+                        </button>
 
-                    {/* Light Theme */}
-                    <button
-                        className="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-border transition-all hover:border-primary/40"
-                    >
-                        <div className="h-20 w-full rounded-lg border bg-white p-2 flex flex-col gap-1 overflow-hidden">
-                            <div className="flex gap-1">
-                                <div className="w-3 h-full rounded-sm bg-gray-200" />
-                                <div className="flex-1 flex flex-col gap-1">
-                                    <div className="h-2 w-3/4 rounded bg-gray-300" />
-                                    <div className="h-1.5 w-1/2 rounded bg-gray-200" />
+                        {/* Light Theme */}
+                        <button
+                            className="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-border transition-all hover:border-primary/40"
+                        >
+                            <div className="h-20 w-full rounded-lg border bg-white p-2 flex flex-col gap-1 overflow-hidden">
+                                <div className="flex gap-1">
+                                    <div className="w-3 h-full rounded-sm bg-gray-200" />
+                                    <div className="flex-1 flex flex-col gap-1">
+                                        <div className="h-2 w-3/4 rounded bg-gray-300" />
+                                        <div className="h-1.5 w-1/2 rounded bg-gray-200" />
+                                        <div className="flex-1 rounded bg-gray-100 mt-0.5" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-medium">Claro</span>
+                            </div>
+                        </button>
+
+                        {/* System Theme */}
+                        <button
+                            className="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-border transition-all hover:border-primary/40"
+                        >
+                            <div className="h-20 w-full rounded-lg border overflow-hidden flex">
+                                <div className="w-1/2 bg-[#0a0f1e] p-1.5 flex flex-col gap-0.5">
+                                    <div className="h-1.5 w-3/4 rounded bg-white/15" />
+                                    <div className="h-1 w-1/2 rounded bg-white/8" />
+                                    <div className="flex-1 rounded bg-white/5 mt-0.5" />
+                                </div>
+                                <div className="w-1/2 bg-white p-1.5 flex flex-col gap-0.5">
+                                    <div className="h-1.5 w-3/4 rounded bg-gray-300" />
+                                    <div className="h-1 w-1/2 rounded bg-gray-200" />
                                     <div className="flex-1 rounded bg-gray-100 mt-0.5" />
                                 </div>
                             </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-medium">Claro</span>
-                        </div>
-                    </button>
-
-                    {/* System Theme */}
-                    <button
-                        className="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-border transition-all hover:border-primary/40"
-                    >
-                        <div className="h-20 w-full rounded-lg border overflow-hidden flex">
-                            <div className="w-1/2 bg-[#0a0f1e] p-1.5 flex flex-col gap-0.5">
-                                <div className="h-1.5 w-3/4 rounded bg-white/15" />
-                                <div className="h-1 w-1/2 rounded bg-white/8" />
-                                <div className="flex-1 rounded bg-white/5 mt-0.5" />
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-medium">Sistema</span>
                             </div>
-                            <div className="w-1/2 bg-white p-1.5 flex flex-col gap-0.5">
-                                <div className="h-1.5 w-3/4 rounded bg-gray-300" />
-                                <div className="h-1 w-1/2 rounded bg-gray-200" />
-                                <div className="flex-1 rounded bg-gray-100 mt-0.5" />
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-medium">Sistema</span>
-                        </div>
-                    </button>
-                </div>
-            </SettingsCard>
+                        </button>
+                    </div>
+                </SettingsCard>
 
-            <SettingsCard title="Personalização" description="Ajuste detalhes visuais do sistema.">
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between py-2">
-                        <div>
-                            <p className="text-sm font-medium">Barra lateral compacta</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">Mostrar apenas ícones na barra lateral.</p>
+                <SettingsCard title="Personalização" description="Ajuste detalhes visuais do sistema.">
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between py-2">
+                            <div>
+                                <p className="text-sm font-medium">Barra lateral compacta</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Mostrar apenas ícones na barra lateral.</p>
+                            </div>
+                            <Switch defaultChecked={true} />
                         </div>
-                        <Switch defaultChecked={true} />
-                    </div>
-                    <div className="flex items-center justify-between py-2">
-                        <div>
-                            <p className="text-sm font-medium">Animações</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">Ativar animações e transições na interface.</p>
+                        <div className="flex items-center justify-between py-2">
+                            <div>
+                                <p className="text-sm font-medium">Animações</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Ativar animações e transições na interface.</p>
+                            </div>
+                            <Switch defaultChecked={true} />
                         </div>
-                        <Switch defaultChecked={true} />
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Idioma</Label>
+                            <Select defaultValue="pt-BR">
+                                <SelectTrigger className="rounded-xl w-56">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="pt-BR">🇧🇷 Português (Brasil)</SelectItem>
+                                    <SelectItem value="en">🇺🇸 English</SelectItem>
+                                    <SelectItem value="es">🇪🇸 Español</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Fuso Horário</Label>
+                            <Select defaultValue="America/Sao_Paulo">
+                                <SelectTrigger className="rounded-xl w-56">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="America/Sao_Paulo">Brasília (GMT-3)</SelectItem>
+                                    <SelectItem value="America/Manaus">Manaus (GMT-4)</SelectItem>
+                                    <SelectItem value="America/Belem">Belém (GMT-3)</SelectItem>
+                                    <SelectItem value="America/Fortaleza">Fortaleza (GMT-3)</SelectItem>
+                                    <SelectItem value="America/Cuiaba">Cuiabá (GMT-4)</SelectItem>
+                                    <SelectItem value="America/Rio_Branco">Rio Branco (GMT-5)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Idioma</Label>
-                        <Select defaultValue="pt-BR">
-                            <SelectTrigger className="rounded-xl w-56">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="pt-BR">🇧🇷 Português (Brasil)</SelectItem>
-                                <SelectItem value="en">🇺🇸 English</SelectItem>
-                                <SelectItem value="es">🇪🇸 Español</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Fuso Horário</Label>
-                        <Select defaultValue="America/Sao_Paulo">
-                            <SelectTrigger className="rounded-xl w-56">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="America/Sao_Paulo">Brasília (GMT-3)</SelectItem>
-                                <SelectItem value="America/Manaus">Manaus (GMT-4)</SelectItem>
-                                <SelectItem value="America/Belem">Belém (GMT-3)</SelectItem>
-                                <SelectItem value="America/Fortaleza">Fortaleza (GMT-3)</SelectItem>
-                                <SelectItem value="America/Cuiaba">Cuiabá (GMT-4)</SelectItem>
-                                <SelectItem value="America/Rio_Branco">Rio Branco (GMT-5)</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-            </SettingsCard>
+                </SettingsCard>
+            </div>
         </div>
     )
 }
@@ -1005,98 +1038,106 @@ function AppearanceTab() {
 // ═══════════ SECURITY TAB ═══════════
 function SecurityTab() {
     return (
-        <div className="space-y-6">
-            <SettingsCard title="Autenticação em Dois Fatores (2FA)" description="Adicione uma camada extra de segurança à sua conta.">
-                <div className="flex items-center gap-4 p-4 rounded-xl border bg-muted/10">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
-                        <Smartphone className="h-6 w-6 text-amber-500" />
-                    </div>
-                    <div className="flex-1">
-                        <p className="text-sm font-medium">2FA Desativado</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Proteja sua conta com autenticação por aplicativo (Google Authenticator, Authy).</p>
-                    </div>
-                    <Button variant="outline" className="rounded-xl gap-1.5">
-                        <Shield className="h-4 w-4" />
-                        Ativar 2FA
-                    </Button>
-                </div>
-            </SettingsCard>
-
-            <SettingsCard title="Sessões Ativas" description="Gerencie os dispositivos conectados à sua conta.">
-                <div className="space-y-3">
-                    {[
-                        { device: "Chrome em macOS", location: "São Paulo, BR", time: "Agora mesmo", current: true, icon: MonitorSmartphone },
-                    ].map((session, i) => (
-                        <div key={i} className="flex items-center gap-4 p-4 rounded-xl border bg-muted/10">
-                            <div className={cn(
-                                "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                                session.current ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"
-                            )}>
-                                <session.icon className="h-5 w-5" />
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                    <p className="text-sm font-medium">{session.device}</p>
-                                    {session.current && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">Sessão atual</Badge>}
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
-                                    <MapPin className="h-3 w-3" /> {session.location} · <Clock className="h-3 w-3" /> {session.time}
-                                </p>
-                            </div>
-                            {!session.current && (
-                                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl gap-1">
-                                    <LogOut className="h-4 w-4" />
-                                    Encerrar
-                                </Button>
-                            )}
+        <div className="relative">
+            <div className="absolute inset-0 z-10">
+                <MaintenanceOverlay
+                    title="Segurança em Manutenção"
+                    description="Estamos implementando novos protocolos de criptografia e auditoria para garantir que sua conta Orbital Hub seja inviolável."
+                />
+            </div>
+            <div className="opacity-20 pointer-events-none select-none filter blur-[2px] space-y-6">
+                <SettingsCard title="Autenticação em Dois Fatores (2FA)" description="Adicione uma camada extra de segurança à sua conta.">
+                    <div className="flex items-center gap-4 p-4 rounded-xl border bg-muted/10">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
+                            <Smartphone className="h-6 w-6 text-amber-500" />
                         </div>
-                    ))}
-                </div>
-                <Button variant="outline" className="mt-4 rounded-xl gap-1.5 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10">
-                    <LogOut className="h-4 w-4" />
-                    Encerrar Todas as Outras Sessões
-                </Button>
-            </SettingsCard>
-
-            {/* Danger zone */}
-            <SettingsCard title="Zona de Perigo" description="Ações irreversíveis na sua conta." className="border-destructive/30">
-                <div className="flex items-center justify-between p-4 rounded-xl border border-destructive/20 bg-destructive/5">
-                    <div>
-                        <p className="text-sm font-medium text-destructive">Excluir Conta</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Remove permanentemente sua conta e todos os dados associados.</p>
+                        <div className="flex-1">
+                            <p className="text-sm font-medium">2FA Desativado</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Proteja sua conta com autenticação por aplicativo (Google Authenticator, Authy).</p>
+                        </div>
+                        <Button variant="outline" className="rounded-xl gap-1.5">
+                            <Shield className="h-4 w-4" />
+                            Ativar 2FA
+                        </Button>
                     </div>
-                    <Dialog>
-                        <DialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="rounded-xl text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive gap-1.5">
-                                <Trash2 className="h-4 w-4" />
-                                Excluir Conta
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="rounded-2xl">
-                            <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2 text-destructive">
-                                    <AlertTriangle className="h-5 w-5" />
-                                    Confirmar Exclusão
-                                </DialogTitle>
-                                <DialogDescription>
-                                    Esta ação é permanente e não pode ser desfeita. Todos os seus dados, vendas, clientes e configurações serão apagados.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-2 py-4">
-                                <Label className="text-sm">Digite &quot;EXCLUIR&quot; para confirmar:</Label>
-                                <Input placeholder="EXCLUIR" className="rounded-xl" />
+                </SettingsCard>
+
+                <SettingsCard title="Sessões Ativas" description="Gerencie os dispositivos conectados à sua conta.">
+                    <div className="space-y-3">
+                        {[
+                            { device: "Chrome em macOS", location: "São Paulo, BR", time: "Agora mesmo", current: true, icon: MonitorSmartphone },
+                        ].map((session, i) => (
+                            <div key={i} className="flex items-center gap-4 p-4 rounded-xl border bg-muted/10">
+                                <div className={cn(
+                                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                                    session.current ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"
+                                )}>
+                                    <session.icon className="h-5 w-5" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-sm font-medium">{session.device}</p>
+                                        {session.current && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">Sessão atual</Badge>}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                                        <MapPin className="h-3 w-3" /> {session.location} · <Clock className="h-3 w-3" /> {session.time}
+                                    </p>
+                                </div>
+                                {!session.current && (
+                                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl gap-1">
+                                        <LogOut className="h-4 w-4" />
+                                        Encerrar
+                                    </Button>
+                                )}
                             </div>
-                            <DialogFooter>
-                                <Button variant="outline" className="rounded-xl">Cancelar</Button>
-                                <Button variant="destructive" className="rounded-xl" disabled>
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Excluir Permanentemente
+                        ))}
+                    </div>
+                    <Button variant="outline" className="mt-4 rounded-xl gap-1.5 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10">
+                        <LogOut className="h-4 w-4" />
+                        Encerrar Todas as Outras Sessões
+                    </Button>
+                </SettingsCard>
+
+                {/* Danger zone */}
+                <SettingsCard title="Zona de Perigo" description="Ações irreversíveis na sua conta." className="border-destructive/30">
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-destructive/20 bg-destructive/5">
+                        <div>
+                            <p className="text-sm font-medium text-destructive">Excluir Conta</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Remove permanentemente sua conta e todos os dados associados.</p>
+                        </div>
+                        <Dialog>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" size="sm" className="rounded-xl text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive gap-1.5">
+                                    <Trash2 className="h-4 w-4" />
+                                    Excluir Conta
                                 </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                </div>
-            </SettingsCard>
+                            </DialogTrigger>
+                            <DialogContent className="rounded-2xl">
+                                <DialogHeader>
+                                    <DialogTitle className="flex items-center gap-2 text-destructive">
+                                        <AlertTriangle className="h-5 w-5" />
+                                        Confirmar Exclusão
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        Esta ação é permanente e não pode ser desfeita. Todos os seus dados, vendas, clientes e configurações serão apagados.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-2 py-4">
+                                    <Label className="text-sm">Digite &quot;EXCLUIR&quot; para confirmar:</Label>
+                                    <Input placeholder="EXCLUIR" className="rounded-xl" />
+                                </div>
+                                <DialogFooter>
+                                    <Button variant="outline" className="rounded-xl">Cancelar</Button>
+                                    <Button variant="destructive" className="rounded-xl" disabled>
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Excluir Permanentemente
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+                </SettingsCard>
+            </div>
         </div>
     )
 }
