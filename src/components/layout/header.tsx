@@ -21,6 +21,8 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 
+import { navigationRoutes as routes } from "@/config/navigation"
+
 import { Button } from "@/components/ui/button"
 import {
     DropdownMenu,
@@ -34,58 +36,6 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { ModeToggle } from "@/components/mode-toggle"
 
-const routes = [
-    {
-        label: "Dashboard",
-        icon: LayoutDashboard,
-        href: "/dashboard",
-        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "FINANCEIRO", "VISUALIZADOR"],
-    },
-    {
-        label: "Financeiro",
-        icon: Wallet,
-        href: "/dashboard/financeiro",
-        roles: ["ADMINISTRADOR", "GERENTE", "FINANCEIRO", "VISUALIZADOR"],
-        items: [
-            { name: "Resumo", href: "/dashboard/financeiro" },
-            { name: "Transações", href: "/dashboard/financeiro/transacoes" },
-            { name: "Categorias", href: "/dashboard/financeiro/categorias" },
-        ],
-    },
-    {
-        label: "Vendas",
-        icon: ShoppingBag,
-        href: "/dashboard/vendas/pdv",
-        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
-        items: [
-            { name: "PDV", href: "/dashboard/vendas/pdv" },
-            { name: "Histórico", href: "/dashboard/vendas" },
-        ],
-    },
-    {
-        label: "Relatórios",
-        icon: FileText,
-        href: "/dashboard/relatorios",
-        roles: ["ADMINISTRADOR", "GERENTE", "FINANCEIRO", "VISUALIZADOR"],
-    },
-    {
-        label: "Cadastros",
-        icon: Users,
-        href: "/dashboard/cadastros",
-        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "FINANCEIRO", "VISUALIZADOR"],
-        items: [
-            { name: "Clientes", href: "/dashboard/cadastros/clientes" },
-            { name: "Fornecedores", href: "/dashboard/cadastros/fornecedores" },
-            { name: "Produtos/Serviços", href: "/dashboard/cadastros/produtos" },
-        ],
-    },
-    {
-        label: "Configurações",
-        icon: Settings,
-        href: "/dashboard/settings",
-        roles: ["ADMINISTRADOR"],
-    },
-]
 
 function MobileNav({ onClose, filteredRoutes }: { onClose: () => void, filteredRoutes: any[] }) {
     const pathname = usePathname()

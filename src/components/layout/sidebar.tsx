@@ -13,9 +13,10 @@ import {
     Settings,
     FileText,
     Orbit,
-    Plug,
     Calendar,
 } from "lucide-react"
+
+import { navigationRoutes as routes } from "@/config/navigation"
 
 import { cn } from "@/lib/utils"
 import {
@@ -30,94 +31,6 @@ import {
 } from "@/components/ui/hover-card"
 import { ModeToggle } from "@/components/mode-toggle"
 
-const routes = [
-    {
-        label: "Dashboard",
-        icon: LayoutDashboard,
-        href: "/dashboard",
-        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "FINANCEIRO", "VISUALIZADOR"],
-    },
-    {
-        label: "Oráculo",
-        icon: Orbit,
-        href: "/oraculo",
-        roles: ["ORACULO"],
-    },
-    {
-        label: "Agenda",
-        icon: Calendar,
-        href: "/dashboard/agenda",
-        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
-    },
-    {
-        label: "Financeiro",
-        icon: Wallet,
-        href: "/dashboard/financeiro",
-        roles: ["ADMINISTRADOR", "GERENTE", "FINANCEIRO", "VISUALIZADOR"],
-        items: [
-            { name: "Resumo", href: "/dashboard/financeiro" },
-            { name: "Transações", href: "/dashboard/financeiro/transacoes" },
-            { name: "Categorias", href: "/dashboard/financeiro/categorias" },
-        ],
-    },
-    {
-        label: "Vendas",
-        icon: ShoppingBag,
-        href: "/dashboard/vendas/pdv",
-        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
-        items: [
-            { name: "PDV", href: "/dashboard/vendas/pdv" },
-            { name: "Histórico", href: "/dashboard/vendas" },
-        ],
-    },
-    {
-        label: "CRM",
-        icon: UsersRound,
-        href: "/dashboard/cadastros",
-        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "FINANCEIRO", "VISUALIZADOR"],
-        items: [
-            { name: "Clientes", href: "/dashboard/cadastros/clientes" },
-            { name: "Fornecedores", href: "/dashboard/cadastros/fornecedores" },
-        ],
-    },
-    {
-        label: "Estoque",
-        icon: Package,
-        href: "/dashboard/cadastros/produtos",
-        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
-        items: [
-            { name: "Produtos", href: "/dashboard/cadastros/produtos" },
-        ],
-    },
-    {
-        label: "Serviços",
-        icon: Wrench,
-        href: "/dashboard/servicos",
-        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
-        items: [
-            { name: "Catálogo", href: "/dashboard/servicos" },
-            { name: "Orçamentos", href: "/dashboard/servicos/orcamentos" },
-        ],
-    },
-    {
-        label: "Relatórios",
-        icon: FileText,
-        href: "/dashboard/relatorios",
-        roles: ["ADMINISTRADOR", "GERENTE", "FINANCEIRO", "VISUALIZADOR"],
-    },
-    {
-        label: "Configurações",
-        icon: Settings,
-        href: "/dashboard/settings",
-        roles: ["ADMINISTRADOR"],
-    },
-    {
-        label: "Conexões",
-        icon: Plug,
-        href: "/dashboard/conexoes",
-        roles: ["ADMINISTRADOR"],
-    },
-]
 
 
 export function Sidebar() {
