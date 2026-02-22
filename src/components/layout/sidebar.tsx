@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useSession } from "next-auth/react"
 import {
     LayoutDashboard,
     Wallet,
@@ -34,16 +35,25 @@ const routes = [
         label: "Dashboard",
         icon: LayoutDashboard,
         href: "/dashboard",
+        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "FINANCEIRO", "VISUALIZADOR"],
+    },
+    {
+        label: "Oráculo",
+        icon: Orbit,
+        href: "/oraculo",
+        roles: ["ORACULO"],
     },
     {
         label: "Agenda",
         icon: Calendar,
         href: "/dashboard/agenda",
+        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
     },
     {
         label: "Financeiro",
         icon: Wallet,
         href: "/dashboard/financeiro",
+        roles: ["ADMINISTRADOR", "GERENTE", "FINANCEIRO", "VISUALIZADOR"],
         items: [
             { name: "Resumo", href: "/dashboard/financeiro" },
             { name: "Transações", href: "/dashboard/financeiro/transacoes" },
@@ -54,6 +64,7 @@ const routes = [
         label: "Vendas",
         icon: ShoppingBag,
         href: "/dashboard/vendas/pdv",
+        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
         items: [
             { name: "PDV", href: "/dashboard/vendas/pdv" },
             { name: "Histórico", href: "/dashboard/vendas" },
@@ -63,6 +74,7 @@ const routes = [
         label: "CRM",
         icon: UsersRound,
         href: "/dashboard/cadastros",
+        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "FINANCEIRO", "VISUALIZADOR"],
         items: [
             { name: "Clientes", href: "/dashboard/cadastros/clientes" },
             { name: "Fornecedores", href: "/dashboard/cadastros/fornecedores" },
@@ -72,6 +84,7 @@ const routes = [
         label: "Estoque",
         icon: Package,
         href: "/dashboard/cadastros/produtos",
+        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
         items: [
             { name: "Produtos", href: "/dashboard/cadastros/produtos" },
         ],
@@ -80,6 +93,7 @@ const routes = [
         label: "Serviços",
         icon: Wrench,
         href: "/dashboard/servicos",
+        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
         items: [
             { name: "Catálogo", href: "/dashboard/servicos" },
             { name: "Orçamentos", href: "/dashboard/servicos/orcamentos" },
@@ -89,22 +103,33 @@ const routes = [
         label: "Relatórios",
         icon: FileText,
         href: "/dashboard/relatorios",
+        roles: ["ADMINISTRADOR", "GERENTE", "FINANCEIRO", "VISUALIZADOR"],
     },
     {
         label: "Configurações",
         icon: Settings,
         href: "/dashboard/settings",
+        roles: ["ADMINISTRADOR"],
     },
     {
         label: "Conexões",
         icon: Plug,
         href: "/dashboard/conexoes",
+        roles: ["ADMINISTRADOR"],
     },
 ]
 
 
 export function Sidebar() {
     const pathname = usePathname()
+    const { data: session } = useSession()
+    const userRole = (session?.user as any)?.role
+
+    const filteredRoutes = routes.filter(route => {
+        if (userRole === "ORACULO") return true
+        if (!route.roles) return true
+        return route.roles.includes(userRole)
+    })
 
     return (
         <aside className="hidden md:flex flex-col h-screen sticky top-0 z-30 w-[72px] bg-sidebar border-r border-sidebar-border">
@@ -120,7 +145,7 @@ export function Sidebar() {
             {/* Navigation */}
             <div className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
                 <nav className="flex flex-col gap-1.5 items-center px-2">
-                    {routes.map((route) => {
+                    {filteredRoutes.map((route) => {
                         if (route.items) {
                             const isActive = route.items.some(item => pathname === item.href) || pathname === route.href
 
