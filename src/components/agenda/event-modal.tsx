@@ -1,0 +1,1031 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { CalendarIcon, MapPin, Users, Check, ChevronsUpDown, Package, FileText, Wrench, Plus, CirclePlus, Link as LinkIcon, UserPlus, Clock, Trash2 } from "lucide-react"
+import { QuickCustomerDialog } from "@/components/customers/quick-customer-dialog"
+import { createCustomer } from "@/app/actions/customer"
+import { toast } from "sonner"
+
+import { cn } from "@/lib/utils"
+import { Calendar } from "@/components/ui/calendar"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "@/components/ui/command"
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover"
+import { Badge } from "@/components/ui/badge"
+
+interface EventModalProps {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    initialStart?: Date
+    initialEnd?: Date
+    initialCustomerName?: string
+    initialCustomerEmail?: string
+    initialCustomerPhone?: string
+    initialTitle?: string
+    initialType?: string
+    initialLocation?: string
+    initialIsLocal?: boolean
+    initialProductId?: string
+    initialServiceId?: string
+    initialQuoteId?: string
+    initialCustomerId?: string
+    products?: any[]
+    services?: any[]
+    quotes?: any[]
+    customers?: any[]
+    eventTypes?: string[]
+    onSave?: (event: any) => void
+    onDelete?: () => void
+}
+
+// Mocks removidos para garantir sistema limpo
+const TIPOS_DE_EVENTO_MOCK: string[] = []
+const CLIENTES_MOCK: string[] = []
+const PRODUTOS_MOCK: string[] = []
+const SERVICOS_MOCK: string[] = []
+const ORCAMENTOS_MOCK: string[] = []
+
+export function EventModal({
+    open,
+    onOpenChange,
+    initialStart,
+    initialEnd,
+    initialCustomerName,
+    initialCustomerEmail,
+    initialCustomerPhone,
+    initialTitle,
+    initialType,
+    initialLocation,
+    initialIsLocal,
+    initialProductId,
+    initialServiceId,
+    initialQuoteId,
+    initialCustomerId,
+    products = [],
+    services = [],
+    quotes = [],
+    customers = [],
+    eventTypes = [],
+    onSave,
+    onDelete
+}: EventModalProps) {
+    // Estado local para o formulário
+    const [titulo, setTitulo] = useState("")
+    const [tipoEvento, setTipoEvento] = useState("")
+    const [tiposCustomizados, setTiposCustomizados] = useState<string[]>([])
+    const [tipoSearch, setTipoSearch] = useState("")
+
+    useEffect(() => {
+        setTiposCustomizados(Array.from(new Set([...TIPOS_DE_EVENTO_MOCK, ...eventTypes])))
+    }, [eventTypes])
+    const [clienteId, setClienteId] = useState(initialCustomerId || "")
+
+    // Datas (usando string DD/MM/YYYY HH:mm para facilitar a máscara e leitura visual)
+    const [dataInicio, setDataInicio] = useState(initialStart ? format(initialStart, "dd/MM/yyyy HH:mm") : format(new Date(), "dd/MM/yyyy HH:mm"))
+    const [dataFim, setDataFim] = useState(initialEnd ? format(initialEnd, "dd/MM/yyyy HH:mm") : format(new Date(Date.now() + 3600000), "dd/MM/yyyy HH:mm"))
+
+    // Estados para controle do Popover do calendário
+    const [calendarOpenInicio, setCalendarOpenInicio] = useState(false)
+    const [calendarOpenFim, setCalendarOpenFim] = useState(false)
+
+    // Helper para extrair só a data do texto e alimentar o calendário
+    const parseCalendarDate = (dateStr: string) => {
+        if (!dateStr || dateStr.includes("_")) return new Date()
+        const [day, month, year] = dateStr.split(" ")[0].split("/")
+        if (!day || !month || !year || year.length < 4) return new Date()
+        const d = new Date(Number(year), Number(month) - 1, Number(day))
+        return isNaN(d.getTime()) ? new Date() : d
+    }
+
+    // Conversão de DD/MM/YYYY HH:mm para Date
+    const parseDateString = (str: string) => {
+        if (!str || str.length < 16) return null;
+        const [datePart, timePart] = str.split(" ")
+        if (!datePart || !timePart) return null;
+        const [day, month, year] = datePart.split("/")
+        const [hour, minute] = timePart.split(":")
+        const d = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute))
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    const handleDataInicioChange = (newVal: string) => {
+        const prevStart = parseDateString(dataInicio)
+        const prevEnd = parseDateString(dataFim)
+        setDataInicio(newVal)
+
+        if (newVal.length === 16) {
+            const newStart = parseDateString(newVal)
+            if (newStart) {
+                let diffTime = 3600000; // default 1h
+                if (prevStart && prevEnd) {
+                    diffTime = prevEnd.getTime() - prevStart.getTime();
+                    if (diffTime < 0) diffTime = 3600000;
+                }
+                const newEndD = new Date(newStart.getTime() + diffTime)
+                setDataFim(format(newEndD, "dd/MM/yyyy HH:mm"))
+            }
+        }
+    }
+
+    const handleCalendarSelect = (date: Date | undefined, isStart: boolean) => {
+        if (!date) return
+        const currentStr = isStart ? dataInicio : dataFim
+        const timeMatch = currentStr.match(/\d{2}:\d{2}$/)
+        const timeToKeep = timeMatch ? timeMatch[0] : "12:00"
+
+        const newStr = `${format(date, "dd/MM/yyyy")} ${timeToKeep}`
+
+        if (isStart) {
+            handleDataInicioChange(newStr)
+            setCalendarOpenInicio(false)
+        } else {
+            setDataFim(newStr)
+            setCalendarOpenFim(false)
+        }
+    }
+
+    const applyDateTimeMask = (val: string) => {
+        let v = val.replace(/\D/g, "");
+        let newVal = "";
+        for (let i = 0; i < v.length && i < 12; i++) {
+            newVal += v[i];
+            if (i === 1 || i === 3) newVal += "/";
+            else if (i === 7) newVal += " ";
+            else if (i === 9) newVal += ":";
+        }
+        return newVal;
+    }
+
+    const setDuration = (minutes: number) => {
+        const startD = parseDateString(dataInicio)
+        if (startD) {
+            const endD = new Date(startD.getTime() + minutes * 60000)
+            setDataFim(format(endD, "dd/MM/yyyy HH:mm"))
+        } else {
+            toast.error("Preencha o horário de início antes de definir a duração.")
+        }
+    }
+
+    // Local / Serviço Externo
+    const [isLocal, setIsLocal] = useState(false)
+    const [endereco, setEndereco] = useState("") // Usado como fallback ou raw
+    const [cep, setCep] = useState("")
+    const [logradouro, setLogradouro] = useState("")
+    const [numero, setNumero] = useState("")
+    const [complemento, setComplemento] = useState("")
+    const [bairro, setBairro] = useState("")
+    const [cidade, setCidade] = useState("")
+    const [uf, setUf] = useState("")
+    const [referencia, setReferencia] = useState("")
+
+    const buscarCEP = async (cepBusca: string) => {
+        const cepLimpo = cepBusca.replace(/\D/g, "")
+        if (cepLimpo.length !== 8) return
+
+        try {
+            const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`)
+            const data = await res.json()
+            if (!data.erro) {
+                setLogradouro(data.logradouro || "")
+                setBairro(data.bairro || "")
+                setCidade(data.localidade || "")
+                setUf(data.uf || "")
+                setTimeout(() => document.getElementById("endereco-numero")?.focus(), 100)
+            }
+        } catch (error) {
+            console.error("Erro ao buscar CEP", error)
+        }
+    }
+
+    const usarEnderecoCliente = () => {
+        const clienteBase = customers?.find(c => c.id === clienteId)
+        if (clienteBase) {
+            setCep(clienteBase.zipCode || "")
+            setLogradouro(clienteBase.address || "")
+            setNumero(clienteBase.number || "")
+            setComplemento(clienteBase.complement || "")
+            setBairro(clienteBase.neighborhood || "")
+            setCidade(clienteBase.city || "")
+            setUf(clienteBase.state || "")
+            toast.success("Endereço do cliente preenchido!")
+        } else {
+            toast.error("Selecione um cliente e certifique-se que ele tem endereço cadastrado.")
+        }
+    }
+
+    // Cliente
+    const [clienteOpen, setClienteOpen] = useState(false)
+    const [clienteSelecionado, setClienteSelecionado] = useState(initialCustomerName || "")
+    const [clienteEmail, setClienteEmail] = useState(initialCustomerEmail || "")
+    const [clienteTelefone, setClienteTelefone] = useState(initialCustomerPhone || "")
+    const [clienteSearch, setClienteSearch] = useState("")
+    const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
+
+    // Sincronizar preenchimento automático inicial
+    useEffect(() => {
+        if (open) {
+            setDataInicio(initialStart ? format(initialStart, "dd/MM/yyyy HH:mm") : format(new Date(), "dd/MM/yyyy HH:mm"))
+            setDataFim(initialEnd ? format(initialEnd, "dd/MM/yyyy HH:mm") : format(new Date(Date.now() + 3600000), "dd/MM/yyyy HH:mm"))
+            if (initialCustomerName) setClienteSelecionado(initialCustomerName)
+            if (initialCustomerEmail) setClienteEmail(initialCustomerEmail)
+            if (initialCustomerPhone) setClienteTelefone(initialCustomerPhone)
+            if (initialTitle) setTitulo(initialTitle)
+            if (initialType) setTipoEvento(initialType)
+            if (initialLocation) {
+                setEndereco(initialLocation)
+                if (initialLocation.includes(" | ")) {
+                    const parts = initialLocation.split(" | ")
+                    parts.forEach(p => {
+                        const [key, ...rest] = p.split(":")
+                        if (rest.length > 0) {
+                            const val = rest.join(":").trim()
+                            if (key.trim() === "Logradouro") setLogradouro(val)
+                            if (key.trim() === "Número") setNumero(val)
+                            if (key.trim() === "Complemento") setComplemento(val)
+                            if (key.trim() === "Bairro") setBairro(val)
+                            if (key.trim() === "Cidade") setCidade(val)
+                            if (key.trim() === "UF") setUf(val)
+                            if (key.trim() === "CEP") setCep(val)
+                            if (key.trim() === "Ref") setReferencia(val)
+                        } else {
+                            // Suporte a strings antigas sem chaves
+                            setLogradouro(initialLocation)
+                        }
+                    })
+                } else {
+                    setLogradouro(initialLocation)
+                }
+            }
+            if (initialIsLocal !== undefined) {
+                setIsLocal(initialIsLocal || !!initialLocation)
+            } else if (initialLocation) {
+                setIsLocal(true)
+            }
+            if (initialProductId) {
+                setProductId(initialProductId)
+                setEnableProduct(true)
+            }
+            if (initialServiceId) {
+                setServiceId(initialServiceId)
+                setEnableService(true)
+            }
+            if (initialQuoteId) {
+                setQuoteId(initialQuoteId)
+                setEnableQuote(true)
+            }
+            if (initialCustomerId) setClienteId(initialCustomerId)
+        }
+    }, [open, initialStart, initialEnd, initialCustomerName, initialCustomerEmail, initialCustomerPhone, initialTitle, initialType, initialLocation, initialIsLocal, initialProductId, initialServiceId, initialQuoteId, initialCustomerId])
+
+    // Associações (Múltiplas)
+    const [enableProduct, setEnableProduct] = useState(false)
+    const [enableService, setEnableService] = useState(false)
+    const [enableQuote, setEnableQuote] = useState(false)
+
+    const [productId, setProductId] = useState("")
+    const [serviceId, setServiceId] = useState("")
+
+    // Comboboxes States
+    const [quoteOpen, setQuoteOpen] = useState(false)
+    const [quoteId, setQuoteId] = useState("")
+
+    const handleSave = () => {
+        if (!dataInicio || !dataFim || dataInicio.length < 16 || dataFim.length < 16) {
+            toast.error("Data de início e fim incompletas. Preencha todos os campos da data e hora.")
+            return
+        }
+
+        const startDate = parseDateString(dataInicio)
+        const endDate = parseDateString(dataFim)
+
+        if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            toast.error("Datas inválidas")
+            return
+        }
+
+        const locationStr = isLocal ? [
+            logradouro ? `Logradouro: ${logradouro}` : "",
+            numero ? `Número: ${numero}` : "",
+            complemento ? `Complemento: ${complemento}` : "",
+            bairro ? `Bairro: ${bairro}` : "",
+            cidade ? `Cidade: ${cidade}` : "",
+            uf ? `UF: ${uf}` : "",
+            cep ? `CEP: ${cep}` : "",
+            referencia ? `Ref: ${referencia}` : ""
+        ].filter(Boolean).join(" | ") : null
+
+        if (onSave) {
+            onSave({
+                title: titulo || tipoEvento || "Novo Evento",
+                start: startDate,
+                end: endDate,
+                tipo: tipoEvento,
+                cliente: clienteSelecionado,
+                clienteEmail: clienteEmail,
+                clienteTelefone: clienteTelefone,
+                isLocal: isLocal,
+                local: isLocal ? (locationStr || endereco) : null,
+                productId: enableProduct ? productId : null,
+                serviceId: enableService ? serviceId : null,
+                quoteId: enableQuote ? quoteId : null,
+                customerId: clienteId,
+            })
+        }
+        onOpenChange(false)
+        resetForm()
+    }
+
+    const resetForm = () => {
+        setTitulo("")
+        setTipoEvento("")
+        setDataInicio(format(new Date(), "dd/MM/yyyy HH:mm"))
+        setDataFim(format(new Date(Date.now() + 3600000), "dd/MM/yyyy HH:mm"))
+        setIsLocal(false)
+        setEndereco("")
+        setCep("")
+        setLogradouro("")
+        setNumero("")
+        setComplemento("")
+        setBairro("")
+        setCidade("")
+        setUf("")
+        setReferencia("")
+        setClienteSelecionado("")
+        setClienteEmail("")
+        setClienteTelefone("")
+        setClienteId("")
+
+        setEnableProduct(false)
+        setEnableService(false)
+        setEnableQuote(false)
+        setQuoteId("")
+        setClienteSearch("")
+        setQuickCustomerOpen(false)
+    }
+
+    const handleQuickCustomerSuccess = (customer: { id: string; name: string; email?: string | null; phone?: string | null }) => {
+        setClienteSelecionado(customer.name)
+        setClienteEmail(customer.email || "")
+        setClienteTelefone(customer.phone || "")
+        setClienteId(customer.id)
+        setClienteOpen(false)
+        setQuickCustomerOpen(false)
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={(val) => {
+            if (!val) resetForm();
+            onOpenChange(val);
+        }}>
+            <DialogContent className="sm:max-w-[700px] overflow-hidden p-0 rounded-2xl">
+                <div className="bg-gradient-to-r from-primary/10 via-background to-background p-6 border-b border-border/50">
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+                            <CalendarIcon className="h-6 w-6 text-primary" />
+                            Novo Agendamento
+                        </DialogTitle>
+                        <DialogDescription>
+                            Crie um novo evento, reunião ou serviço na agenda.
+                        </DialogDescription>
+                    </DialogHeader>
+                </div>
+
+                <div className="p-6 overflow-y-auto max-h-[70vh]">
+                    <div className="grid gap-6">
+
+                        {/* Linha 1: Título e Tipo */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="titulo">Título Principal (Opcional)</Label>
+                                <Input
+                                    id="titulo"
+                                    placeholder="Ex: Alinhamento de Projeto"
+                                    value={titulo}
+                                    onChange={(e) => setTitulo(e.target.value)}
+                                    className="bg-muted/30"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Tipo</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            className="w-full justify-between bg-muted/30 font-normal"
+                                        >
+                                            {tipoEvento ? tipoEvento : "Selecione ou crie um tipo..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                                        <Command>
+                                            <CommandInput
+                                                placeholder="Buscar ou criar tipo..."
+                                                value={tipoSearch}
+                                                onValueChange={setTipoSearch}
+                                            />
+                                            <CommandList>
+                                                <CommandEmpty className="p-2">
+                                                    {tipoSearch.length > 0 && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            className="w-full justify-start text-sm"
+                                                            onClick={() => {
+                                                                const newType = tipoSearch.trim()
+                                                                setTiposCustomizados(prev => [...prev, newType])
+                                                                setTipoEvento(newType)
+                                                                setTipoSearch("")
+                                                            }}
+                                                        >
+                                                            <Plus className="mr-2 h-4 w-4" />
+                                                            Criar "{tipoSearch}"
+                                                        </Button>
+                                                    )}
+                                                    {tipoSearch.length === 0 && (
+                                                        <div className="text-center text-sm text-muted-foreground p-2">
+                                                            Nenhum tipo encontrado.
+                                                        </div>
+                                                    )}
+                                                </CommandEmpty>
+                                                <CommandGroup>
+                                                    {tiposCustomizados.map((tipo) => (
+                                                        <CommandItem
+                                                            key={tipo}
+                                                            value={tipo}
+                                                            onSelect={() => {
+                                                                setTipoEvento(tipo)
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    tipoEvento === tipo ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            {tipo}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                        </div>
+
+                        {/* Linha 2: Datas */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Início</Label>
+                                <div className="flex gap-2">
+                                    <Popover open={calendarOpenInicio} onOpenChange={setCalendarOpenInicio}>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" size="icon" className="shrink-0 bg-muted/30">
+                                                <CalendarIcon className="h-4 w-4" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                            <Calendar
+                                                mode="single"
+                                                defaultMonth={parseCalendarDate(dataInicio)}
+                                                selected={parseCalendarDate(dataInicio)}
+                                                onSelect={(d) => handleCalendarSelect(d, true)}
+                                                initialFocus
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
+                                    <Input
+                                        type="text"
+                                        placeholder="DD/MM/AAAA HH:MM"
+                                        maxLength={16}
+                                        value={dataInicio}
+                                        onChange={(e) => handleDataInicioChange(applyDateTimeMask(e.target.value))}
+                                        className="bg-muted/30 font-mono text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Término</Label>
+                                <div className="flex gap-2">
+                                    <Popover open={calendarOpenFim} onOpenChange={setCalendarOpenFim}>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" size="icon" className="shrink-0 bg-muted/30" title="Selecionar Data">
+                                                <CalendarIcon className="h-4 w-4" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                            <Calendar
+                                                mode="single"
+                                                defaultMonth={parseCalendarDate(dataFim)}
+                                                selected={parseCalendarDate(dataFim)}
+                                                onSelect={(d) => handleCalendarSelect(d, false)}
+                                                initialFocus
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
+                                    <Input
+                                        type="text"
+                                        placeholder="DD/MM/AAAA HH:MM"
+                                        maxLength={16}
+                                        value={dataFim}
+                                        onChange={(e) => setDataFim(applyDateTimeMask(e.target.value))}
+                                        className="bg-muted/30 font-mono text-sm flex-1"
+                                    />
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" size="icon" className="shrink-0 bg-muted/30" title="Duração Rápida">
+                                                <Clock className="h-4 w-4" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-40">
+                                            {[
+                                                { label: "15 minutos", min: 15 },
+                                                { label: "30 minutos", min: 30 },
+                                                { label: "45 minutos", min: 45 },
+                                                { label: "1 hora", min: 60 },
+                                                { label: "1.5 horas", min: 90 },
+                                                { label: "2 horas", min: 120 },
+                                                { label: "4 horas", min: 240 },
+                                                { label: "Dia Todo (8h)", min: 480 },
+                                            ].map(opt => (
+                                                <DropdownMenuItem key={opt.min} onClick={() => setDuration(opt.min)}>
+                                                    {opt.label}
+                                                </DropdownMenuItem>
+                                            ))}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Seção: Cliente / Contato */}
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <Label className="flex items-center gap-2 font-semibold">
+                                    <Users className="h-4 w-4 text-muted-foreground" />
+                                    Cliente / Contato Relacionado
+                                </Label>
+                                <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="h-auto p-0 text-primary"
+                                    onClick={() => setQuickCustomerOpen(true)}
+                                >
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Novo Cliente
+                                </Button>
+                            </div>
+                            <Popover open={clienteOpen} onOpenChange={setClienteOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        aria-expanded={clienteOpen}
+                                        className="w-full justify-between bg-muted/30 h-11"
+                                    >
+                                        {clienteSelecionado
+                                            ? clienteSelecionado
+                                            : "Selecione o cliente envolvido (opcional)..."}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                                    <Command>
+                                        <CommandInput
+                                            placeholder="Buscar cliente..."
+                                            value={clienteSearch}
+                                            onValueChange={setClienteSearch}
+                                        />
+                                        <CommandList>
+                                            <CommandEmpty className="p-0">
+                                                {clienteSearch.length > 0 && (
+                                                    <div className="p-2 border-t border-border">
+                                                        <Button
+                                                            variant="ghost"
+                                                            className="w-full justify-start text-primary font-medium h-9"
+                                                            onClick={() => setQuickCustomerOpen(true)}
+                                                        >
+                                                            <UserPlus className="h-4 w-4 mr-2" />
+                                                            Criar "{clienteSearch}" como novo cliente
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                                {clienteSearch.length === 0 && (
+                                                    <div className="p-4 text-center text-sm text-muted-foreground">
+                                                        Nenhum cliente selecionado.
+                                                    </div>
+                                                )}
+                                            </CommandEmpty>
+                                            <CommandGroup>
+                                                {customers.map((c) => (
+                                                    <CommandItem
+                                                        key={c.id}
+                                                        value={c.name}
+                                                        onSelect={(currentValue) => {
+                                                            setClienteSelecionado(currentValue === clienteSelecionado ? "" : currentValue)
+                                                            setClienteEmail(c.email || "")
+                                                            setClienteTelefone(c.phone || "")
+                                                            setClienteId(c.id)
+                                                            setClienteOpen(false)
+                                                        }}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4",
+                                                                clienteSelecionado === c.name ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                        <div className="flex flex-col">
+                                                            <span>{c.name}</span>
+                                                            {c.phone && <span className="text-[10px] text-muted-foreground">{c.phone}</span>}
+                                                        </div>
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+
+                            {/* Campos Adicionais de Contato (opcionais p/ novo cliente) */}
+                            {clienteSelecionado && (
+                                <div className="grid grid-cols-2 gap-4 mt-3 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs text-muted-foreground">E-mail (Opcional)</Label>
+                                        <Input
+                                            placeholder="email@exemplo.com"
+                                            type="email"
+                                            value={clienteEmail}
+                                            onChange={e => setClienteEmail(e.target.value)}
+                                            className="h-9 bg-background focus:bg-background"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs text-muted-foreground">WhatsApp / Telefone (Opcional)</Label>
+                                        <Input
+                                            placeholder="(11) 99999-9999"
+                                            value={clienteTelefone}
+                                            onChange={e => setClienteTelefone(e.target.value)}
+                                            className="h-9 bg-background focus:bg-background"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Seção: Local / Serviço Externo */}
+                        <div className="rounded-xl border border-border/50 bg-muted/10 p-4 space-y-4 shadow-sm relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-primary/40"></div>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                                    <Label htmlFor="local-switch" className="text-base font-semibold cursor-pointer">Serviço Externo</Label>
+                                </div>
+                                <Switch
+                                    id="local-switch"
+                                    checked={isLocal}
+                                    onCheckedChange={setIsLocal}
+                                />
+                            </div>
+
+                            {isLocal && (
+                                <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-4">
+                                    {clienteId && (
+                                        <div className="flex justify-end pt-2">
+                                            <Button variant="outline" size="sm" onClick={usarEnderecoCliente} type="button" className="text-xs h-8">
+                                                <MapPin className="h-3 w-3 mr-1.5" />
+                                                Puxar endereço do cliente selecionado
+                                            </Button>
+                                        </div>
+                                    )}
+
+                                    {/* Linha 1: CEP e Logradouro */}
+                                    <div className="flex flex-col sm:flex-row gap-4">
+                                        <div className="flex flex-col justify-end space-y-2 sm:w-1/3">
+                                            <Label>CEP</Label>
+                                            <Input
+                                                placeholder="00000-000"
+                                                value={cep}
+                                                maxLength={9}
+                                                onChange={(e) => {
+                                                    let val = e.target.value.replace(/\D/g, "")
+                                                    if (val.length > 5) {
+                                                        val = val.replace(/^(\d{5})(\d)/, "$1-$2")
+                                                    }
+                                                    setCep(val)
+                                                    if (val.replace(/\D/g, "").length === 8) {
+                                                        buscarCEP(val)
+                                                    }
+                                                }}
+                                                className="bg-background"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col justify-end space-y-2 sm:w-2/3">
+                                            <Label>Logradouro</Label>
+                                            <Input
+                                                placeholder="Av. Exemplo"
+                                                value={logradouro}
+                                                onChange={(e) => setLogradouro(e.target.value)}
+                                                className="bg-background"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Linha 2: Número, Complemento e Bairro */}
+                                    <div className="flex flex-col sm:flex-row gap-4">
+                                        <div className="flex flex-col justify-end space-y-2 sm:w-1/4">
+                                            <Label>Número</Label>
+                                            <Input
+                                                id="endereco-numero"
+                                                placeholder="123"
+                                                value={numero}
+                                                onChange={(e) => setNumero(e.target.value)}
+                                                className="bg-background"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col justify-end space-y-2 sm:w-1/4">
+                                            <Label>Complemento</Label>
+                                            <Input
+                                                placeholder="Apto 45"
+                                                value={complemento}
+                                                onChange={(e) => setComplemento(e.target.value)}
+                                                className="bg-background"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col justify-end space-y-2 sm:w-2/4">
+                                            <Label>Bairro</Label>
+                                            <Input
+                                                placeholder="Centro"
+                                                value={bairro}
+                                                onChange={(e) => setBairro(e.target.value)}
+                                                className="bg-background"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Linha 3: Cidade e UF */}
+                                    <div className="flex flex-col sm:flex-row gap-4">
+                                        <div className="flex flex-col justify-end space-y-2 sm:w-3/4">
+                                            <Label>Cidade</Label>
+                                            <Input
+                                                placeholder="São Paulo"
+                                                value={cidade}
+                                                onChange={(e) => setCidade(e.target.value)}
+                                                className="bg-background"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col justify-end space-y-2 sm:w-1/4">
+                                            <Label>UF</Label>
+                                            <Input
+                                                placeholder="SP"
+                                                maxLength={2}
+                                                value={uf}
+                                                onChange={(e) => setUf(e.target.value.toUpperCase())}
+                                                className="bg-background"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Linha 4: Referência */}
+                                    <div className="flex flex-col justify-end space-y-2 w-full">
+                                        <Label>Ponto de Referência <span className="text-muted-foreground font-normal">(Opcional)</span></Label>
+                                        <Input
+                                            placeholder="Próximo ao supermercado X"
+                                            value={referencia}
+                                            onChange={(e) => setReferencia(e.target.value)}
+                                            className="bg-background"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Seção: Associação Produto/Serviço/Orçamento */}
+                        <div className="rounded-xl border border-border/50 bg-muted/5 space-y-4 p-4">
+                            <Label className="font-semibold block mb-2 text-muted-foreground flex items-center gap-2">
+                                <LinkIcon className="h-4 w-4" />
+                                Vincular a...
+                            </Label>
+
+                            <div className="flex flex-wrap gap-2">
+                                <Badge
+                                    variant={enableProduct ? "default" : "outline"}
+                                    className="cursor-pointer py-1.5 px-3 gap-1.5"
+                                    onClick={() => setEnableProduct(!enableProduct)}
+                                >
+                                    <Package className="h-3.5 w-3.5" /> Produto
+                                </Badge>
+                                <Badge
+                                    variant={enableService ? "default" : "outline"}
+                                    className="cursor-pointer py-1.5 px-3 gap-1.5"
+                                    onClick={() => setEnableService(!enableService)}
+                                >
+                                    <Wrench className="h-3.5 w-3.5" /> Serviço
+                                </Badge>
+                                <Badge
+                                    variant={enableQuote ? "default" : "outline"}
+                                    className="cursor-pointer py-1.5 px-3 gap-1.5"
+                                    onClick={() => setEnableQuote(!enableQuote)}
+                                >
+                                    <FileText className="h-3.5 w-3.5" /> Orçamento
+                                </Badge>
+                            </div>
+
+                            <div className="space-y-4 pt-2">
+                                {enableProduct && (
+                                    <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <Label className="mb-2 block text-sm">Selecione o Produto</Label>
+                                        <Select value={productId} onValueChange={setProductId}>
+                                            <SelectTrigger className="bg-background h-11">
+                                                <SelectValue placeholder="Buscar produto..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {products.length === 0 ? (
+                                                    <SelectItem value="none" disabled>Nenhum produto cadastrado</SelectItem>
+                                                ) : (
+                                                    products.map(p => (
+                                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                    ))
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+
+                                {enableService && (
+                                    <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <Label className="mb-2 block text-sm">Selecione o Serviço</Label>
+                                        <Select value={serviceId} onValueChange={setServiceId}>
+                                            <SelectTrigger className="bg-background h-11">
+                                                <SelectValue placeholder="Buscar serviço..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {services.length === 0 ? (
+                                                    <SelectItem value="none" disabled>Nenhum serviço cadastrado</SelectItem>
+                                                ) : (
+                                                    services.map(s => (
+                                                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                                    ))
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+
+                                {enableQuote && (
+                                    <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <Label className="text-sm">Vincular a um Orçamento Existente:</Label>
+                                        </div>
+                                        <Popover open={quoteOpen} onOpenChange={setQuoteOpen}>
+                                            <PopoverTrigger asChild>
+                                                <Button
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    aria-expanded={quoteOpen}
+                                                    className="w-full justify-between bg-background h-11 font-normal"
+                                                >
+                                                    {quoteId
+                                                        ? (() => {
+                                                            const selected = quotes.find(q => q.id === quoteId)
+                                                            return selected
+                                                                ? `#${String(selected.number).padStart(4, "0")} - ${selected.clientName}`
+                                                                : "Orçamento selecionado..."
+                                                        })()
+                                                        : "Buscar orçamento (Nome ou Número)..."}
+                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                                                <Command>
+                                                    <CommandInput placeholder="Digite número ou cliente..." />
+                                                    <CommandEmpty>Nenhum orçamento encontrado.</CommandEmpty>
+                                                    <CommandList>
+                                                        <CommandGroup>
+                                                            {quotes.map((q) => {
+                                                                const label = `#${String(q.number).padStart(4, "0")} - ${q.clientName}`
+                                                                return (
+                                                                    <CommandItem
+                                                                        key={q.id}
+                                                                        value={label} // Command is matched against this value
+                                                                        onSelect={() => {
+                                                                            setQuoteId(q.id === quoteId ? "" : q.id)
+                                                                            setQuoteOpen(false)
+                                                                        }}
+                                                                    >
+                                                                        <Check
+                                                                            className={cn(
+                                                                                "mr-2 h-4 w-4",
+                                                                                quoteId === q.id ? "opacity-100" : "opacity-0"
+                                                                            )}
+                                                                        />
+                                                                        {label}
+                                                                    </CommandItem>
+                                                                )
+                                                            })}
+                                                        </CommandGroup>
+                                                    </CommandList>
+                                                </Command>
+                                            </PopoverContent>
+                                        </Popover>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <QuickCustomerDialog
+                    open={quickCustomerOpen}
+                    onOpenChange={setQuickCustomerOpen}
+                    onSuccess={handleQuickCustomerSuccess}
+                    initialName={clienteSearch}
+                />
+
+                <DialogFooter className="p-6 border-t border-border/50 bg-muted/10 flex justify-between items-center sm:justify-between w-full">
+                    <div className="flex-1">
+                        {onDelete && (
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="outline" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Excluir este agendamento?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            Esta ação não pode ser desfeita. Isso removerá o agendamento da sua agenda permanentemente.
+                                            Se houver uma transação pendente atrelada auto-gerada, ela também será removida.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                        <AlertDialogAction
+                                            onClick={onDelete}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                        >
+                                            Excluir
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        )}
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                        <Button className="gradient-primary shadow-md shadow-primary/20" onClick={handleSave}>
+                            Confirmar Agendamento
+                        </Button>
+                    </div>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog >
+    )
+}

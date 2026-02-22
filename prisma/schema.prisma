@@ -1,0 +1,341 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                  String        @id @default(cuid())
+  name                String?
+  email               String?       @unique
+  emailVerified       DateTime?
+  image               String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  role                Role          @default(USER)
+  password            String?
+  phone               String?
+  position            String?
+  parentAdminId       String?
+  accounts            Account[]
+  createdEvents       AgendaEvent[] @relation("EventCreator")
+  events              AgendaEvent[]
+  createdCategories   Category[]    @relation("CategoryCreator")
+  categories          Category[]
+  company             Company?
+  createdCustomers    Customer[]    @relation("CustomerCreator")
+  customers           Customer[]
+  createdProducts     Product[]     @relation("ProductCreator")
+  products            Product[]
+  createdQuotes       Quote[]       @relation("QuoteCreator")
+  quotes              Quote[]
+  createdSales        Sale[]        @relation("SaleCreator")
+  sales               Sale[]
+  createdServices     Service[]     @relation("ServiceCreator")
+  services            Service[]
+  sessions            Session[]
+  createdSuppliers    Supplier[]    @relation("SupplierCreator")
+  suppliers           Supplier[]
+  createdTransactions Transaction[] @relation("TransactionCreator")
+  transactions        Transaction[]
+  parentAdmin         User?         @relation("TeamMembers", fields: [parentAdminId], references: [id])
+  teamMembers         User[]        @relation("TeamMembers")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Category {
+  id           String        @id @default(cuid())
+  name         String
+  type         String
+  color        String?
+  userId       String
+  createdById  String?
+  createdBy    User?         @relation("CategoryCreator", fields: [createdById], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+}
+
+model Customer {
+  id           String        @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  document     String?
+  userId       String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  address      String?
+  city         String?
+  neighborhood String?
+  number       String?
+  state        String?
+  zipCode      String?
+  complement   String?
+  createdById  String?
+  events       AgendaEvent[]
+  createdBy    User?         @relation("CustomerCreator", fields: [createdById], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  sales        Sale[]        @relation("CustomerSales")
+  transactions Transaction[]
+}
+
+model Supplier {
+  id           String        @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  document     String?
+  userId       String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  address      String?
+  city         String?
+  neighborhood String?
+  number       String?
+  state        String?
+  zipCode      String?
+  complement   String?
+  createdById  String?
+  freightSales Sale[]        @relation("CarrierSales")
+  createdBy    User?         @relation("SupplierCreator", fields: [createdById], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String       @id @default(cuid())
+  description String
+  amount      Decimal
+  type        String
+  date        DateTime
+  status      String
+  categoryId  String?
+  customerId  String?
+  supplierId  String?
+  quoteId     String?
+  userId      String
+  saleId      String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  eventId     String?
+  createdById String?
+  category    Category?    @relation(fields: [categoryId], references: [id])
+  createdBy   User?        @relation("TransactionCreator", fields: [createdById], references: [id])
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  event       AgendaEvent? @relation(fields: [eventId], references: [id])
+  quote       Quote?       @relation(fields: [quoteId], references: [id])
+  sale        Sale?        @relation(fields: [saleId], references: [id])
+  supplier    Supplier?    @relation(fields: [supplierId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+}
+
+model Product {
+  id            String        @id @default(cuid())
+  name          String
+  description   String?
+  price         Decimal       @default(0)
+  stockQuantity Int           @default(0)
+  manageStock   Boolean       @default(true)
+  ncm           String?
+  sku           String?
+  userId        String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  createdById   String?
+  events        AgendaEvent[]
+  createdBy     User?         @relation("ProductCreator", fields: [createdById], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+  quoteItems    QuoteItem[]
+  saleItems     SaleItem[]
+}
+
+model Sale {
+  id             String        @id @default(cuid())
+  date           DateTime      @default(now())
+  totalAmount    Decimal
+  status         String        @default("COMPLETED")
+  userId         String
+  customerId     String?
+  carrierId      String?
+  shippingCost   Decimal?
+  shippingStatus String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  createdById    String?
+  carrier        Supplier?     @relation("CarrierSales", fields: [carrierId], references: [id])
+  createdBy      User?         @relation("SaleCreator", fields: [createdById], references: [id])
+  customer       Customer?     @relation("CustomerSales", fields: [customerId], references: [id])
+  user           User          @relation(fields: [userId], references: [id])
+  items          SaleItem[]
+  transactions   Transaction[]
+}
+
+model SaleItem {
+  id         String   @id @default(cuid())
+  quantity   Int
+  unitPrice  Decimal
+  totalPrice Decimal
+  saleId     String
+  productId  String?
+  itemType   String   @default("product")
+  serviceId  String?
+  product    Product? @relation(fields: [productId], references: [id])
+  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  service    Service? @relation(fields: [serviceId], references: [id])
+}
+
+model Service {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  price       Decimal       @default(0)
+  duration    Int?
+  category    String?
+  active      Boolean       @default(true)
+  userId      String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  createdById String?
+  events      AgendaEvent[]
+  quoteItems  QuoteItem[]
+  saleItems   SaleItem[]
+  createdBy   User?         @relation("ServiceCreator", fields: [createdById], references: [id])
+  user        User          @relation(fields: [userId], references: [id])
+}
+
+model Quote {
+  id            String        @id @default(cuid())
+  number        Int
+  clientName    String
+  clientEmail   String?
+  clientPhone   String?
+  notes         String?
+  validUntil    DateTime?
+  status        String        @default("DRAFT")
+  totalAmount   Decimal       @default(0)
+  discount      Decimal       @default(0)
+  isRecurring   Boolean       @default(false)
+  installments  Int?
+  userId        String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  paymentMethod String?
+  paymentType   String?
+  createdById   String?
+  events        AgendaEvent[]
+  createdBy     User?         @relation("QuoteCreator", fields: [createdById], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+  items         QuoteItem[]
+  transactions  Transaction[]
+}
+
+model QuoteItem {
+  id          String   @id @default(cuid())
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Decimal
+  totalPrice  Decimal
+  serviceId   String?
+  quoteId     String
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  service     Service? @relation(fields: [serviceId], references: [id])
+}
+
+model AgendaEvent {
+  id           String        @id @default(cuid())
+  title        String
+  type         String
+  startDate    DateTime
+  endDate      DateTime
+  isLocal      Boolean       @default(false)
+  location     String?
+  customerName String?
+  userId       String
+  customerId   String?
+  productId    String?
+  serviceId    String?
+  quoteId      String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  createdById  String?
+  createdBy    User?         @relation("EventCreator", fields: [createdById], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  product      Product?      @relation(fields: [productId], references: [id])
+  quote        Quote?        @relation(fields: [quoteId], references: [id])
+  service      Service?      @relation(fields: [serviceId], references: [id])
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Company {
+  id           String   @id @default(cuid())
+  name         String
+  tradingName  String?
+  document     String?
+  email        String?
+  phone        String?
+  mobile       String?
+  address      String?
+  number       String?
+  complement   String?
+  neighborhood String?
+  city         String?
+  state        String?
+  zipCode      String?
+  logoUrl      String?
+  quoteNotes   String?
+  userId       String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum Role {
+  USER
+  ADMIN
+  ORACULO
+  ADMINISTRADOR
+  GERENTE
+  VENDEDOR
+  FINANCEIRO
+  VISUALIZADOR
+}
