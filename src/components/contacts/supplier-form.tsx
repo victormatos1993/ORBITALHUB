@@ -124,9 +124,6 @@ export function SupplierForm({ initialData }: SupplierFormProps) {
                 form.setValue("neighborhood", result.neighborhood)
                 form.setValue("city", result.city)
                 form.setValue("state", result.state)
-                if (result.complement && !form.getValues("complement")) {
-                    form.setValue("complement", result.complement)
-                }
                 toast.success("Endereço preenchido automaticamente!")
             } else {
                 toast.error("CEP não encontrado.")
