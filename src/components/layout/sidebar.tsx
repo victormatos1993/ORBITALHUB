@@ -33,15 +33,18 @@ import { ModeToggle } from "@/components/mode-toggle"
 
 
 
-export function Sidebar() {
+export function Sidebar({ userRole: serverRole }: { userRole?: string }) {
     const pathname = usePathname()
     const { data: session } = useSession()
-    const userRole = (session?.user as any)?.role
+    const clientRole = (session?.user as any)?.role
+
+    // Prioritize server-provided role for immediate render
+    const userRole = serverRole || clientRole
 
     const filteredRoutes = routes.filter(route => {
         if (userRole === "ORACULO") return true
         if (!route.roles) return true
-        return route.roles.includes(userRole)
+        return route.roles.includes(userRole!)
     })
 
     return (

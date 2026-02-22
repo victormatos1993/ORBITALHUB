@@ -156,15 +156,29 @@ function MobileNav({ onClose, filteredRoutes }: { onClose: () => void, filteredR
     )
 }
 
-export function Header() {
+export interface HeaderProps {
+    userRole?: string
+    userName?: string
+    userEmail?: string
+}
+
+export function Header({
+    userRole: serverRole,
+    userName: serverName,
+    userEmail: serverEmail
+}: HeaderProps) {
     const [open, setOpen] = useState(false)
     const { data: session } = useSession()
-    const userRole = (session?.user as any)?.role
+
+    // Prioritize server-provided data for immediate render
+    const userRole = serverRole || (session?.user as any)?.role
+    const userName = serverName || session?.user?.name
+    const userEmail = serverEmail || session?.user?.email
 
     const filteredRoutes = routes.filter(route => {
         if (userRole === "ORACULO") return true
         if (!route.roles) return true
-        return route.roles.includes(userRole)
+        return route.roles.includes(userRole!)
     })
 
     return (
@@ -223,12 +237,12 @@ export function Header() {
                     <DropdownMenuContent align="end" className="w-56 rounded-xl p-1.5">
                         <DropdownMenuLabel className="px-3 py-2">
                             <div className="flex flex-col gap-0.5">
-                                <span className="text-sm font-semibold">{session?.user?.name || "Minha Conta"}</span>
-                                <span className="text-xs text-muted-foreground font-normal">{session?.user?.email || "Carregando..."}</span>
+                                <span className="text-sm font-semibold">{userName || "Minha Conta"}</span>
+                                <span className="text-xs text-muted-foreground font-normal">{userEmail || "Carregando..."}</span>
                             </div>
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {(session?.user as any)?.role === "ORACULO" && (
+                        {userRole === "ORACULO" && (
                             <Link href="/oraculo">
                                 <DropdownMenuItem className="rounded-lg px-3 py-2 cursor-pointer text-primary bg-primary/5 focus:bg-primary/10">
                                     <Orbit className="mr-2 h-4 w-4" />
