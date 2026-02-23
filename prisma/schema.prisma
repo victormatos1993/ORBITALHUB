@@ -9,42 +9,76 @@ datasource db {
 }
 
 model User {
-  id                  String        @id @default(cuid())
+  id                  String         @id @default(cuid())
   name                String?
-  email               String?       @unique
+  email               String?        @unique
   emailVerified       DateTime?
   image               String?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  role                Role          @default(USER)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  role                Role           @default(USER)
   password            String?
   phone               String?
   position            String?
   parentAdminId       String?
   accounts            Account[]
-  createdEvents       AgendaEvent[] @relation("EventCreator")
+  createdEvents       AgendaEvent[]  @relation("EventCreator")
   events              AgendaEvent[]
-  createdCategories   Category[]    @relation("CategoryCreator")
+  createdCategories   Category[]     @relation("CategoryCreator")
   categories          Category[]
   company             Company?
-  createdCustomers    Customer[]    @relation("CustomerCreator")
+  createdCustomers    Customer[]     @relation("CustomerCreator")
   customers           Customer[]
-  createdProducts     Product[]     @relation("ProductCreator")
+  createdProducts     Product[]      @relation("ProductCreator")
   products            Product[]
-  createdQuotes       Quote[]       @relation("QuoteCreator")
+  createdQuotes       Quote[]        @relation("QuoteCreator")
   quotes              Quote[]
-  createdSales        Sale[]        @relation("SaleCreator")
+  createdSales        Sale[]         @relation("SaleCreator")
   sales               Sale[]
-  createdServices     Service[]     @relation("ServiceCreator")
+  createdServices     Service[]      @relation("ServiceCreator")
   services            Service[]
   sessions            Session[]
-  createdSuppliers    Supplier[]    @relation("SupplierCreator")
+  createdSuppliers    Supplier[]     @relation("SupplierCreator")
   suppliers           Supplier[]
-  createdTransactions Transaction[] @relation("TransactionCreator")
+  createdTransactions Transaction[]  @relation("TransactionCreator")
   transactions        Transaction[]
-  parentAdmin         User?         @relation("TeamMembers", fields: [parentAdminId], references: [id])
-  teamMembers         User[]        @relation("TeamMembers")
+  notifications       Notification[]
+  parentAdmin         User?          @relation("TeamMembers", fields: [parentAdminId], references: [id])
+  teamMembers         User[]         @relation("TeamMembers")
 }
+
+/// Central de Notificações — registra todas as notificações geradas pelo sistema
+model Notification {
+  id             String    @id @default(cuid())
+  userId         String                          // tenant dono
+  type           String    @default("AGENDA_EVENT") // AGENDA_EVENT | SYSTEM
+  title          String
+  description    String?
+
+  // Referências opcionais
+  eventId        String?                         // AgendaEvent vinculado
+  customerId     String?
+  customerName   String?
+
+  // Valores financeiros
+  expectedAmount Decimal?                        // valor previsto (do serviço/produto)
+  actionAmount   Decimal?                        // valor efetivamente gerado na ação
+
+  // Status do ciclo de vida
+  // PENDING | CONFIRMED | CANCELLED | ACTED_PDV | DISMISSED
+  status         String    @default("PENDING")
+  actionAt       DateTime?                       // quando foi atuada
+
+  // Metadados para resumo diário
+  dueAt          DateTime                        // quando o evento ficou pendente (startDate)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user           User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, eventId])                    // 1 notificação por evento por tenant
+}
+
 
 model Account {
   id                String  @id @default(cuid())
@@ -196,6 +230,10 @@ model Sale {
   carrierId      String?
   shippingCost   Decimal?
   shippingStatus String?
+  freightPaidBy  String?       @default("CLIENTE") // CLIENTE ou EMPRESA (frete grátis para o cliente)
+  paymentMethod  String?       // PIX, DINHEIRO, CREDITO, DEBITO, VOUCHER, CHEQUE, CARNE, BOLETO
+  paymentType    String?       // A_VISTA, PARCELADO
+  installments   Int?          // número de parcelas (para CREDITO, CARNE, BOLETO)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   createdById    String?
@@ -281,29 +319,39 @@ model QuoteItem {
 }
 
 model AgendaEvent {
-  id           String        @id @default(cuid())
-  title        String
-  type         String
-  startDate    DateTime
-  endDate      DateTime
-  isLocal      Boolean       @default(false)
-  location     String?
-  customerName String?
-  userId       String
-  customerId   String?
-  productId    String?
-  serviceId    String?
-  quoteId      String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  createdById  String?
-  createdBy    User?         @relation("EventCreator", fields: [createdById], references: [id])
-  customer     Customer?     @relation(fields: [customerId], references: [id])
-  product      Product?      @relation(fields: [productId], references: [id])
-  quote        Quote?        @relation(fields: [quoteId], references: [id])
-  service      Service?      @relation(fields: [serviceId], references: [id])
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  id                     String        @id @default(cuid())
+  title                  String
+  type                   String
+  startDate              DateTime
+  endDate                DateTime
+  isLocal                Boolean       @default(false)
+  location               String?
+  customerName           String?
+  userId                 String
+  customerId             String?
+  productId              String?
+  serviceId              String?
+  quoteId                String?
+  // ── Controle de notificação ──────────────────────────────────────────────
+  // null = ainda pendente no sino | CONFIRMED | CANCELLED | ACTED_PDV | DISMISSED
+  notificationStatus     String?
+  notificationActedAt    DateTime?
+  // ── Status financeiro do evento ──────────────────────────────────────────
+  // null = sem valor financeiro | PENDING | PAID | PARTIAL | CANCELLED
+  paymentStatus          String?
+  // ── Status operacional do atendimento ────────────────────────────────────
+  // null = não gerenciado | SCHEDULED | CONFIRMED | COMPLETED | CANCELLED | NO_SHOW
+  attendanceStatus       String?       @default("SCHEDULED")
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  createdById            String?
+  createdBy              User?         @relation("EventCreator", fields: [createdById], references: [id])
+  customer               Customer?     @relation(fields: [customerId], references: [id])
+  product                Product?      @relation(fields: [productId], references: [id])
+  quote                  Quote?        @relation(fields: [quoteId], references: [id])
+  service                Service?      @relation(fields: [serviceId], references: [id])
+  user                   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions           Transaction[]
 }
 
 model Company {

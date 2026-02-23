@@ -1,5 +1,7 @@
 "use client"
 
+import { useState, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { MoreHorizontal, Pencil, Trash } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,10 +12,8 @@ import {
     DropdownMenuLabel,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import Link from "next/link"
 import { deleteProduct } from "@/app/actions/product"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
 
 export type Product = {
     id: string
@@ -27,6 +27,12 @@ export type Product = {
     createdAt: Date
     updatedAt: Date
 }
+
+// Contexto compartilhado para abrir o modal de edição a partir da tabela
+type EditCallback = (product: Product) => void
+let _onEdit: EditCallback | null = null
+
+export function registerEditCallback(fn: EditCallback) { _onEdit = fn }
 
 const ActionsCell = ({ product }: { product: Product }) => {
     const router = useRouter()
@@ -51,17 +57,19 @@ const ActionsCell = ({ product }: { product: Product }) => {
                     <MoreHorizontal className="h-4 w-4" />
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="rounded-xl">
                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                <DropdownMenuItem asChild>
-                    <Link href={`/dashboard/cadastros/produtos/${product.id}`} className="flex items-center cursor-pointer">
-                        <Pencil className="mr-2 h-4 w-4" />
-                        Editar
-                    </Link>
+                <DropdownMenuItem
+                    onClick={() => _onEdit?.(product)}
+                    className="flex items-center cursor-pointer gap-2"
+                >
+                    <Pencil className="h-3.5 w-3.5" /> Editar
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDelete} className="text-red-600 focus:text-red-600 cursor-pointer">
-                    <Trash className="mr-2 h-4 w-4" />
-                    Excluir
+                <DropdownMenuItem
+                    onClick={handleDelete}
+                    className="text-red-600 focus:text-red-600 cursor-pointer gap-2"
+                >
+                    <Trash className="h-3.5 w-3.5" /> Excluir
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
@@ -69,38 +77,14 @@ const ActionsCell = ({ product }: { product: Product }) => {
 }
 
 export const columns: ColumnDef<Product>[] = [
-    {
-        accessorKey: "name",
-        header: "Nome",
-    },
-    {
-        accessorKey: "sku",
-        header: "SKU",
-        cell: ({ row }) => row.getValue("sku") || "-",
-    },
-    {
-        accessorKey: "stockQuantity",
-        header: "Estoque",
-    },
+    { accessorKey: "name", header: "Nome" },
+    { accessorKey: "sku", header: "SKU", cell: ({ row }) => row.getValue("sku") || "-" },
+    { accessorKey: "stockQuantity", header: "Estoque" },
     {
         accessorKey: "price",
         header: "Preço",
-        cell: ({ row }) => {
-            const amount = parseFloat(row.getValue("price"))
-            const formatted = new Intl.NumberFormat("pt-BR", {
-                style: "currency",
-                currency: "BRL",
-            }).format(amount)
-            return formatted
-        },
+        cell: ({ row }) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(row.getValue("price"))),
     },
-    {
-        accessorKey: "ncm",
-        header: "NCM",
-        cell: ({ row }) => row.getValue("ncm") || "-",
-    },
-    {
-        id: "actions",
-        cell: ({ row }) => <ActionsCell product={row.original} />,
-    },
+    { accessorKey: "ncm", header: "NCM", cell: ({ row }) => row.getValue("ncm") || "-" },
+    { id: "actions", cell: ({ row }) => <ActionsCell product={row.original} /> },
 ]

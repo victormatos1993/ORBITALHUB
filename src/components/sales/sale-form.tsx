@@ -129,7 +129,17 @@ function maskPhone(value: string): string {
     }
 }
 
-export function SaleForm() {
+export function SaleForm({
+    initialCustomerId,
+    initialServiceId,
+    initialProductId,
+    sourceEventId,
+}: {
+    initialCustomerId?: string
+    initialServiceId?: string
+    initialProductId?: string
+    sourceEventId?: string
+} = {}) {
     const router = useRouter()
     const [isLoading, setIsLoading] = useState(false)
     const [customers, setCustomers] = useState<CustomerOption[]>([])
@@ -143,7 +153,12 @@ export function SaleForm() {
     const [carrierId, setCarrierId] = useState<string | null>(null)
     const [shippingCost, setShippingCost] = useState<number>(0)
     const [shippingStatus, setShippingStatus] = useState<"PAID" | "PENDING">("PENDING")
+    const [freightPaidBy, setFreightPaidBy] = useState<"CLIENTE" | "EMPRESA">("CLIENTE")
     const [cart, setCart] = useState<CartItem[]>([])
+
+    // Pagamento
+    const [paymentMethod, setPaymentMethod] = useState<string | null>(null)
+    const [installments, setInstallments] = useState<number>(2)
 
     // Search & UI state
     const [productSearch, setProductSearch] = useState("")
@@ -186,6 +201,29 @@ export function SaleForm() {
         }
         loadData()
     }, [])
+
+    // Pré-preencher dados vindos da agenda (quando aberto via notificação)
+    useEffect(() => {
+        if (!initialCustomerId && !initialServiceId && !initialProductId) return
+
+        // Pré-selecionar o cliente
+        if (initialCustomerId) {
+            setCustomerId(initialCustomerId)
+        }
+
+        // Pré-adicionar serviço ao carrinho
+        if (initialServiceId && services.length > 0) {
+            const service = services.find(s => s.id === initialServiceId)
+            if (service) addServiceToCart(service)
+        }
+
+        // Pré-adicionar produto ao carrinho
+        if (initialProductId && products.length > 0) {
+            const product = products.find(p => p.id === initialProductId)
+            if (product) addProductToCart(product)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [services, products]) // roda quando os dados carregarem
 
     // Computed
     const subtotal = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0)
@@ -275,12 +313,22 @@ export function SaleForm() {
 
         setIsLoading(true)
         try {
+            // Métodos que suportam parcelamento
+            const installablesMethods = ["CREDITO", "CARNE", "BOLETO"]
+            const isInstallable = paymentMethod && installablesMethods.includes(paymentMethod)
+            const paymentType = isInstallable && installments > 1 ? "PARCELADO" : "A_VISTA"
+
             const result = await createSale({
                 date,
                 customerId,
                 carrierId: showFreight ? carrierId : null,
                 shippingCost: showFreight ? shippingCost : 0,
                 shippingStatus: showFreight ? shippingStatus : null,
+                freightPaidBy: showFreight ? freightPaidBy : 'CLIENTE',
+                paymentMethod: paymentMethod || null,
+                paymentType,
+                installments: isInstallable && installments > 1 ? installments : null,
+                eventId: sourceEventId || null,
                 items: cart.map(item => ({
                     itemType: item.itemType,
                     productId: item.productId,
@@ -329,6 +377,22 @@ export function SaleForm() {
         <div className="flex flex-col lg:flex-row gap-5 min-h-[calc(100vh-180px)]">
             {/* ═══════════ LEFT: Product/Service Search + Cart Items ═══════════ */}
             <div className="flex-1 flex flex-col gap-4">
+
+                {/* Banner de origem — agendamento */}
+                {sourceEventId && (
+                    <div className="flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-2.5">
+                        <span className="text-lg">📅</span>
+                        <div className="flex-1">
+                            <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                                Venda originada de um agendamento
+                            </p>
+                            <p className="text-xs text-amber-600/70 dark:text-amber-500/70">
+                                Cliente e itens foram pré-preenchidos a partir do evento. Revise e finalize a venda.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Product/Service Search Bar */}
                 <div className="relative">
                     <Popover open={productPopoverOpen} onOpenChange={setProductPopoverOpen}>
@@ -743,7 +807,6 @@ export function SaleForm() {
                         </PopoverContent>
                     </Popover>
                 </div>
-
                 {/* Freight (Collapsible) */}
                 <div className="rounded-2xl border bg-card overflow-hidden">
                     <button
@@ -755,16 +818,69 @@ export function SaleForm() {
                             <Truck className="h-4 w-4 text-primary" />
                             <span className="text-sm font-semibold">Frete / Entrega</span>
                         </div>
-                        <Badge variant={showFreight ? "default" : "secondary"} className="text-xs">
-                            {showFreight ? "Ativo" : "Sem frete"}
+                        <Badge
+                            variant={showFreight ? (freightPaidBy === "EMPRESA" ? "outline" : "default") : "secondary"}
+                            className={cn(
+                                "text-xs",
+                                showFreight && freightPaidBy === "EMPRESA" && "border-amber-500/50 text-amber-600 dark:text-amber-400"
+                            )}
+                        >
+                            {!showFreight ? "Sem frete" : freightPaidBy === "EMPRESA" ? "Frete Grátis" : "Ativo"}
                         </Badge>
                     </button>
                     <div className={cn(
                         "overflow-hidden transition-all duration-300",
-                        showFreight ? "max-h-[300px] opacity-100" : "max-h-0 opacity-0"
+                        showFreight ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
                     )}>
                         <div className="px-4 pb-4 space-y-3 border-t">
+
+                            {/* ── Quem paga o frete? ── */}
                             <div className="pt-3">
+                                <Label className="text-xs text-muted-foreground mb-2 block">Quem paga o frete?</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFreightPaidBy("CLIENTE")}
+                                        className={cn(
+                                            "flex flex-col items-center justify-center gap-1 rounded-xl border py-3 text-xs font-semibold transition-all",
+                                            freightPaidBy === "CLIENTE"
+                                                ? "border-primary bg-primary/10 text-primary shadow-sm"
+                                                : "border-border text-muted-foreground hover:border-primary/40 hover:bg-muted/30"
+                                        )}
+                                    >
+                                        <span className="text-base">👤</span>
+                                        <span>Cliente paga</span>
+                                        <span className="text-[10px] font-normal opacity-70">incluído no total</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFreightPaidBy("EMPRESA")}
+                                        className={cn(
+                                            "flex flex-col items-center justify-center gap-1 rounded-xl border py-3 text-xs font-semibold transition-all",
+                                            freightPaidBy === "EMPRESA"
+                                                ? "border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 shadow-sm"
+                                                : "border-border text-muted-foreground hover:border-amber-500/40 hover:bg-muted/30"
+                                        )}
+                                    >
+                                        <span className="text-base">🏢</span>
+                                        <span>Empresa arca</span>
+                                        <span className="text-[10px] font-normal opacity-70">frete grátis</span>
+                                    </button>
+                                </div>
+
+                                {/* Aviso quando empresa paga */}
+                                {freightPaidBy === "EMPRESA" && (
+                                    <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3 py-2">
+                                        <span className="text-sm mt-0.5">⚠️</span>
+                                        <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                                            O valor do frete <strong>não será cobrado do cliente</strong>, mas será lançado como{" "}
+                                            <strong>despesa da empresa</strong> no financeiro.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
                                 <Label className="text-xs text-muted-foreground">Transportadora</Label>
                                 <Select onValueChange={setCarrierId} value={carrierId || undefined}>
                                     <SelectTrigger className="mt-1 rounded-xl">
@@ -790,7 +906,7 @@ export function SaleForm() {
                                 />
                             </div>
                             <div>
-                                <Label className="text-xs text-muted-foreground">Status</Label>
+                                <Label className="text-xs text-muted-foreground">Status de Pagamento do Frete</Label>
                                 <Select onValueChange={(v) => setShippingStatus(v as "PAID" | "PENDING")} defaultValue="PENDING">
                                     <SelectTrigger className="mt-1 rounded-xl">
                                         <SelectValue />
@@ -804,6 +920,94 @@ export function SaleForm() {
                         </div>
                     </div>
                 </div>
+
+                {/* ─── Forma de Pagamento ─── */}
+                {(() => {
+                    const METHODS = [
+                        { id: "PIX", label: "PIX", icon: "⚡", color: "emerald", installable: false },
+                        { id: "DINHEIRO", label: "Dinheiro", icon: "💵", color: "green", installable: false },
+                        { id: "CREDITO", label: "Crédito", icon: "💳", color: "blue", installable: true },
+                        { id: "DEBITO", label: "Débito", icon: "🏦", color: "indigo", installable: false },
+                        { id: "VOUCHER", label: "Voucher", icon: "🎟️", color: "purple", installable: false },
+                        { id: "CHEQUE", label: "Cheque", icon: "📝", color: "amber", installable: true },
+                        { id: "CARNE", label: "Carnê", icon: "📋", color: "orange", installable: true },
+                        { id: "BOLETO", label: "Boleto", icon: "🧾", color: "slate", installable: true },
+                    ]
+                    const selected = METHODS.find(m => m.id === paymentMethod)
+                    const installable = selected?.installable ?? false
+
+                    return (
+                        <div className="rounded-2xl border bg-card p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                                <CreditCard className="h-4 w-4 text-primary" />
+                                <Label className="text-sm font-semibold">Forma de Pagamento</Label>
+                                {paymentMethod && (
+                                    <Badge variant="secondary" className="ml-auto text-xs">
+                                        {selected?.label}
+                                        {installable && installments > 1 ? ` ${installments}x` : " à vista"}
+                                    </Badge>
+                                )}
+                            </div>
+
+                            {/* Grade de botões */}
+                            <div className="grid grid-cols-4 gap-2">
+                                {METHODS.map((m) => {
+                                    const isActive = paymentMethod === m.id
+                                    return (
+                                        <button
+                                            key={m.id}
+                                            type="button"
+                                            onClick={() => setPaymentMethod(isActive ? null : m.id)}
+                                            className={cn(
+                                                "flex flex-col items-center justify-center gap-1 rounded-xl border py-2.5 px-1 text-xs font-semibold transition-all duration-150 select-none",
+                                                isActive
+                                                    ? "border-primary bg-primary/10 text-primary shadow-sm scale-[0.97]"
+                                                    : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:bg-muted/40 hover:text-foreground"
+                                            )}
+                                        >
+                                            <span className="text-base leading-none">{m.icon}</span>
+                                            <span className="leading-none truncate w-full text-center">{m.label}</span>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+
+                            {/* Parcelas — aparece só para métodos parceláveis */}
+                            {installable && (
+                                <div className="mt-3 pt-3 border-t">
+                                    <Label className="text-xs text-muted-foreground mb-2 block">
+                                        Número de Parcelas
+                                    </Label>
+                                    <div className="flex gap-2 flex-wrap">
+                                        {[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => (
+                                            <button
+                                                key={n}
+                                                type="button"
+                                                onClick={() => setInstallments(n)}
+                                                className={cn(
+                                                    "flex items-center justify-center rounded-lg border w-10 h-9 text-sm font-semibold transition-all",
+                                                    installments === n
+                                                        ? "border-primary bg-primary/10 text-primary"
+                                                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                                                )}
+                                            >
+                                                {n === 1 ? "1x" : `${n}x`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {installments > 1 && (
+                                        <p className="text-xs text-muted-foreground mt-2">
+                                            {installments}x de{" "}
+                                            <strong className="text-foreground">
+                                                {formatBRL((cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0) + (showFreight && freightPaidBy === "CLIENTE" ? shippingCost : 0)) / installments)}
+                                            </strong>
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )
+                })()}
 
                 {/* ═══════════ Totals & Checkout ═══════════ */}
                 <div className="rounded-2xl border bg-card p-5 mt-auto">

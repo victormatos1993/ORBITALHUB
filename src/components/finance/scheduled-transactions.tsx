@@ -1,19 +1,13 @@
 "use client"
 
+import { useState } from "react"
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { CalendarClock, CheckCircle, ExternalLink } from "lucide-react"
-import Link from "next/link"
-import { updateTransaction } from "@/app/actions/transaction"
+import { CalendarClock, ShoppingCart, CalendarSearch, X } from "lucide-react"
+import { cancelEventAndTransaction } from "@/app/actions/agenda"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
@@ -25,49 +19,65 @@ interface Transaction {
     date: string
     type: string
     eventId?: string | null
+    customerId?: string | null
+    serviceId?: string | null
+    productId?: string | null
 }
 
 interface ScheduledTransactionsProps {
     data: Transaction[]
     className?: string
+    customers?: any[]
+    products?: any[]
+    services?: any[]
 }
 
-export function ScheduledTransactions({ data, className }: ScheduledTransactionsProps) {
+export function ScheduledTransactions({
+    data,
+    className,
+}: ScheduledTransactionsProps) {
     const router = useRouter()
+    const [cancelling, setCancelling] = useState<string | null>(null)
 
-    const formatCurrency = (value: number) => {
-        return new Intl.NumberFormat('pt-BR', {
-            style: 'currency',
-            currency: 'BRL'
-        }).format(value);
-    }
+    const formatCurrency = (value: number) =>
+        new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 
     const formatDate = (dateStr: string) => {
-        if (!dateStr) return "-";
-        const [year, month, day] = dateStr.split('-');
-        return `${day}/${month}/${year}`;
+        if (!dateStr) return "-"
+        const [year, month, day] = dateStr.split("-")
+        return `${day}/${month}/${year}`
     }
 
-    const handleConfirmPayment = async (id: string, currentData: Transaction) => {
-        try {
-            // we need to pass the full object as required by updateTransaction schema
-            const res = await updateTransaction(id, {
-                description: currentData.description,
-                amount: currentData.amount,
-                type: currentData.type as any,
-                date: new Date(currentData.date),
-                status: "paid"
-            })
+    const handleOpenPDV = (transaction: Transaction) => {
+        const params = new URLSearchParams()
+        if (transaction.customerId) params.set("customerId", transaction.customerId)
+        if (transaction.serviceId) params.set("serviceId", transaction.serviceId)
+        if (transaction.productId) params.set("productId", transaction.productId)
+        if (transaction.eventId) params.set("eventId", transaction.eventId)
+        window.location.href = `/dashboard/vendas/pdv?${params.toString()}`
+    }
 
-            if (res.success) {
-                toast.success("Pagamento confirmado!")
-                router.refresh()
-            } else {
-                toast.error("Erro ao confirmar pagamento")
-            }
-        } catch (error) {
-            toast.error("Erro ao processar confirmação")
+    // Navega para a agenda com o eventId na URL.
+    // A própria página da agenda detecta o parâmetro e abre o modal do evento.
+    const handleOpenAgenda = (transaction: Transaction) => {
+        if (!transaction.eventId) {
+            toast.error("Este agendamento não possui um evento vinculado.")
+            return
         }
+        router.push(`/dashboard/agenda?eventId=${transaction.eventId}`)
+    }
+
+    const handleCancel = async (transaction: Transaction) => {
+        if (!transaction.eventId) return
+        setCancelling(transaction.id)
+        const res = await cancelEventAndTransaction(transaction.eventId)
+        if (res?.success) {
+            toast.info("Agendamento cancelado")
+            router.refresh()
+        } else {
+            toast.error("Erro ao cancelar agendamento")
+        }
+        setCancelling(null)
     }
 
     return (
@@ -100,43 +110,65 @@ export function ScheduledTransactions({ data, className }: ScheduledTransactions
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                data.map((transaction) => (
-                                    <TableRow key={transaction.id} className="group transition-colors">
-                                        <TableCell>
-                                            <div className="flex flex-col">
+                                data.map((transaction) => {
+                                    const isCancelling = cancelling === transaction.id
+                                    return (
+                                        <TableRow key={transaction.id} className="group transition-colors">
+                                            <TableCell>
                                                 <span className="font-semibold text-sm">{transaction.description}</span>
-                                                {transaction.eventId && (
-                                                    <Link
-                                                        href="/dashboard/agenda"
-                                                        className="text-[10px] text-primary flex items-center gap-0.5 hover:underline mt-0.5"
+                                            </TableCell>
+                                            <TableCell className={`text-right font-bold text-sm ${transaction.type === "income" ? "text-emerald-600" : "text-destructive"}`}>
+                                                {transaction.type === "expense" ? "-" : "+"}{formatCurrency(transaction.amount)}
+                                            </TableCell>
+                                            <TableCell className="text-right text-sm">
+                                                <Badge variant="outline" className="font-medium bg-background">
+                                                    {formatDate(transaction.date)}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex items-center justify-end gap-1.5">
+                                                    {/* Abrir PDV */}
+                                                    <button
+                                                        onClick={() => handleOpenPDV(transaction)}
+                                                        title="Abrir no PDV"
+                                                        className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
                                                     >
-                                                        <ExternalLink className="h-2.5 w-2.5" /> Ver na Agenda
-                                                    </Link>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className={`text-right font-bold text-sm ${transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                            {transaction.type === 'expense' ? '-' : '+'}{formatCurrency(transaction.amount)}
-                                        </TableCell>
-                                        <TableCell className="text-right text-sm">
-                                            <Badge variant="outline" className="font-medium bg-background">
-                                                {formatDate(transaction.date)}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="h-8 gap-1 border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground group-hover:border-primary transition-all"
-                                                onClick={() => handleConfirmPayment(transaction.id, transaction)}
-                                            >
-                                                <CheckCircle className="h-3.5 w-3.5" />
-                                                Confirmar
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                )))
-                            }
+                                                        <ShoppingCart className="h-3 w-3" />
+                                                        PDV
+                                                    </button>
+
+                                                    {/* Ver agendamento — navega para Agenda e abre o modal do evento */}
+                                                    {transaction.eventId && (
+                                                        <button
+                                                            onClick={() => handleOpenAgenda(transaction)}
+                                                            title="Ver na Agenda"
+                                                            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                                        >
+                                                            <CalendarSearch className="h-3 w-3" />
+                                                            Agendamento
+                                                        </button>
+                                                    )}
+
+                                                    {/* Cancelar */}
+                                                    {transaction.eventId && (
+                                                        <button
+                                                            onClick={() => handleCancel(transaction)}
+                                                            disabled={isCancelling}
+                                                            title="Cancelar agendamento"
+                                                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                                                        >
+                                                            {isCancelling
+                                                                ? <span className="h-3 w-3 border-2 border-destructive/30 border-t-destructive rounded-full animate-spin inline-block" />
+                                                                : <X className="h-3.5 w-3.5" />
+                                                            }
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })
+                            )}
                         </TableBody>
                     </Table>
                 </div>

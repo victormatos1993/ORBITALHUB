@@ -4,6 +4,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { getTenantInfo } from "@/lib/auth-utils"
+import { markNotificationActed } from "@/app/actions/notifications"
 
 export type CreateSaleItem = {
     itemType: 'product' | 'service'
@@ -18,6 +19,11 @@ export type CreateSaleData = {
     carrierId: string | null
     shippingCost: number | null
     shippingStatus: 'PAID' | 'PENDING' | null
+    freightPaidBy: 'CLIENTE' | 'EMPRESA'
+    paymentMethod: string | null
+    paymentType: string | null
+    installments: number | null
+    eventId?: string | null  // se veio de um agendamento
     items: CreateSaleItem[]
     date: Date
 }
@@ -56,7 +62,12 @@ export async function processSale(tenantId: string, userId: string | null, data:
         }
 
         const totalItemsAmount = data.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0)
-        const totalAmount = totalItemsAmount + (data.shippingCost || 0)
+
+        // Se freightPaidBy = EMPRESA, o frete NÃO é cobrado do cliente (totalAmount = só itens)
+        // Se freightPaidBy = CLIENTE (padrão), o frete entra no total
+        const freightPaidBy = data.freightPaidBy ?? 'CLIENTE'
+        const freightForCustomer = freightPaidBy === 'CLIENTE' ? (data.shippingCost || 0) : 0
+        const totalAmount = totalItemsAmount + freightForCustomer
 
         const customerId = (data.customerId === "") ? null : data.customerId
         const carrierId = (data.carrierId === "") ? null : data.carrierId
@@ -85,6 +96,10 @@ export async function processSale(tenantId: string, userId: string | null, data:
                     carrierId: carrierId,
                     shippingCost: data.shippingCost,
                     shippingStatus: data.shippingStatus,
+                    freightPaidBy: freightPaidBy,
+                    paymentMethod: data.paymentMethod,
+                    paymentType: data.paymentType,
+                    installments: data.installments,
                     totalAmount,
                     date: data.date,
                     status: 'COMPLETED'
@@ -132,6 +147,8 @@ export async function processSale(tenantId: string, userId: string | null, data:
                 }
             })
 
+            // Gera despesa de frete se houver transportadora e valor
+            // (sempre gera a despesa, independente de quem paga — se EMPRESA, é custo absorvido; se CLIENTE, é repasse)
             if (carrierId && data.shippingCost && data.shippingCost > 0) {
                 const transactionStatus = data.shippingStatus === 'PAID' ? 'paid' : 'pending'
 
@@ -150,11 +167,15 @@ export async function processSale(tenantId: string, userId: string | null, data:
                     })
                 }
 
+                const freightDesc = freightPaidBy === 'EMPRESA'
+                    ? `Frete Grátis (custo empresa) Venda #${sale.id.slice(-6).toUpperCase()}`
+                    : `Frete Venda #${sale.id.slice(-6).toUpperCase()}`
+
                 await tx.transaction.create({
                     data: {
                         userId: tenantId,
                         createdById: userId,
-                        description: `Frete Venda #${sale.id.slice(-6).toUpperCase()}`,
+                        description: freightDesc,
                         amount: data.shippingCost,
                         type: 'expense',
                         status: transactionStatus,
@@ -170,6 +191,44 @@ export async function processSale(tenantId: string, userId: string | null, data:
         revalidatePath("/dashboard/vendas")
         revalidatePath("/dashboard/financeiro/transacoes")
         revalidatePath("/dashboard/cadastros/produtos")
+
+        // Se a venda veio de um agendamento, baixa tudo relacionado ao evento
+        if (data.eventId) {
+            // 1. Atualiza o evento: financeiro PAID + atendimento COMPLETED
+            await prisma.agendaEvent.update({
+                where: { id: data.eventId },
+                data: {
+                    notificationStatus: "ACTED_PDV",
+                    notificationActedAt: new Date(),
+                    paymentStatus: "PAID",
+                    attendanceStatus: "COMPLETED",
+                },
+            })
+
+            // 2. Baixa a(s) Transaction(s) pendentes vinculadas ao evento
+            await prisma.transaction.updateMany({
+                where: { eventId: data.eventId, status: "pending" },
+                data: { status: "paid", date: data.date },
+            })
+
+            // 3. Marca notificação normal como atuada
+            await markNotificationActed(data.eventId, "ACTED_PDV", totalAmount)
+
+            // 4. Baixa o PAYMENT_ALERT como Venda PDV (com valor faturado)
+            await prisma.notification.updateMany({
+                where: {
+                    userId: tenantId,
+                    eventId: `pay_alert_${data.eventId}`,
+                    status: "PENDING",
+                },
+                data: { status: "ACTED_PDV", actionAmount: totalAmount, actionAt: new Date() },
+            })
+
+            revalidatePath("/dashboard/financeiro")
+            revalidatePath("/dashboard/notificacoes")
+            revalidatePath("/dashboard/agenda")
+        }
+
 
         return { success: true }
     } catch (error) {

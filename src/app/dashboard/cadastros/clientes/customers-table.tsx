@@ -19,7 +19,15 @@ export function CustomersTable({ data, total, page, pageSize }: CustomersTablePr
             data={data}
             columns={columns}
             enableSearch
-            searchPlaceholder="Pesquisar por nome, email ou documento..."
+            searchPlaceholder="Pesquisa"
+            searchFields={(customer) => [
+                customer.name ?? "",
+                customer.email ?? "",
+                customer.phone ?? "",
+                customer.document ?? "",
+                customer.city ?? "",
+                customer.state ?? "",
+            ]}
             onRowClick={(customer) => router.push(`/dashboard/cadastros/clientes/${customer.id}`)}
             pagination={{
                 page,

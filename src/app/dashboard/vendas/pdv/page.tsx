@@ -6,7 +6,18 @@ export const metadata: Metadata = {
     description: "Ponto de Venda - Terminal de vendas",
 }
 
-export default function PDVPage() {
+interface PDVPageProps {
+    searchParams: Promise<{
+        customerId?: string
+        serviceId?: string
+        productId?: string
+        eventId?: string
+    }>
+}
+
+export default async function PDVPage({ searchParams }: PDVPageProps) {
+    const params = await searchParams
+
     return (
         <div className="flex flex-col gap-4">
             {/* Header */}
@@ -19,8 +30,13 @@ export default function PDVPage() {
                 </div>
             </div>
 
-            {/* Sale Form */}
-            <SaleForm />
+            {/* Sale Form — pré-preenchido com dados do agendamento se vindo da agenda */}
+            <SaleForm
+                initialCustomerId={params.customerId}
+                initialServiceId={params.serviceId}
+                initialProductId={params.productId}
+                sourceEventId={params.eventId}
+            />
         </div>
     )
 }

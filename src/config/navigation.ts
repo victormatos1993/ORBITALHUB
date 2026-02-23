@@ -10,6 +10,7 @@ import {
     Orbit,
     Plug,
     Calendar,
+    BellRing,
     LucideIcon
 } from "lucide-react"
 
@@ -44,6 +45,12 @@ export const navigationRoutes: NavRoute[] = [
         icon: Calendar,
         href: "/dashboard/agenda",
         roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
+    },
+    {
+        label: "Notificações",
+        icon: BellRing,
+        href: "/dashboard/notificacoes",
+        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "FINANCEIRO", "VISUALIZADOR"],
     },
     {
         label: "Financeiro",

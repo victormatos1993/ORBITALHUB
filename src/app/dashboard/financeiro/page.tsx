@@ -3,6 +3,9 @@ import { SummaryCards } from "@/components/finance/summary-cards"
 import { RecentTransactions } from "@/components/finance/recent-transactions"
 import { OverviewChart } from "@/components/finance/overview-chart"
 import { getFinancialSummary, getTransactions, getMonthlyChartData } from "@/app/actions/transaction"
+import { getCustomers } from "@/app/actions/customer"
+import { getProducts } from "@/app/actions/product"
+import { getServices } from "@/app/actions/service"
 
 export const metadata: Metadata = {
     title: "Financeiro | Orbital Hub",
@@ -16,8 +19,14 @@ import { ScheduledTransactions } from "@/components/finance/scheduled-transactio
 
 export default async function FinancialPage() {
     const summary = await getFinancialSummary()
-    const { transactions } = await getTransactions({ pageSize: 100 }) // Fetch more to filter locally
+    const { transactions } = await getTransactions({ pageSize: 100 })
     const chartData = await getMonthlyChartData()
+    const { customers } = await getCustomers({ pageSize: 200 })
+    const { products: rawProducts } = await getProducts({ pageSize: 200 })
+    const services = await getServices()  // retorna array direto
+
+    // getProducts retorna Decimal no price — converte para Number
+    const products = rawProducts.map((p: any) => ({ ...p, price: Number(p.price) }))
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -43,7 +52,12 @@ export default async function FinancialPage() {
             <div className="grid gap-6 lg:grid-cols-7">
                 <div className="col-span-4 space-y-6">
                     <OverviewChart data={chartData} />
-                    <ScheduledTransactions data={scheduledTransactions} />
+                    <ScheduledTransactions
+                        data={scheduledTransactions}
+                        customers={customers}
+                        products={products}
+                        services={services}
+                    />
                 </div>
                 <RecentTransactions className="col-span-3" data={recentTransactions} />
             </div>

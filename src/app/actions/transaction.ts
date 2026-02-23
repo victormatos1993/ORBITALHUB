@@ -134,7 +134,13 @@ export async function getTransactions(filters?: TransactionFilters) {
                 customerDocument: t.customer?.document,
                 supplierName: t.supplier?.name,
                 supplierDocument: t.supplier?.document,
-                categoryName: t.category?.name
+                categoryName: t.category?.name,
+                // ID do evento vinculado — necessário para abrir o EventModal
+                eventId: (t as any).event?.id ?? null,
+                // Campos do evento vinculado — para o PDV montar a URL
+                customerId: (t as any).event?.customerId ?? null,
+                serviceId: (t as any).event?.serviceId ?? null,
+                productId: (t as any).event?.productId ?? null,
             })),
             total
         }
@@ -174,20 +180,21 @@ export async function getFinancialSummary() {
         where: { userId: tenantId, type: "expense", status: "paid" }
     })
 
-    const totalPending = await prisma.transaction.aggregate({
-        _sum: { amount: true },
-        where: { userId: tenantId, status: "pending" }
-    })
-
     const totalPendingExpenses = await prisma.transaction.aggregate({
         _sum: { amount: true },
         where: { userId: tenantId, type: "expense", status: "pending" }
     })
 
+    const totalPendingIncome = await prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { userId: tenantId, type: "income", status: "pending" }
+    })
+
     const income = Number(totalIncome._sum.amount) || 0
     const expense = Number(totalExpense._sum.amount) || 0
-    const pending = Number(totalPending._sum.amount) || 0
     const pendingExpenses = Number(totalPendingExpenses._sum.amount) || 0
+    const pendingIncome = Number(totalPendingIncome._sum.amount) || 0
+    const pending = pendingExpenses + pendingIncome
 
     const now = new Date()
     const currentMonthStart = startOfMonth(now)
@@ -240,6 +247,7 @@ export async function getFinancialSummary() {
         expense: currentExpense,
         pending,
         pendingExpenses,
+        pendingIncome,
         trends: {
             income: calculatePercentageChange(currentIncome, lastIncome),
             expense: calculatePercentageChange(currentExpense, lastExpense),
@@ -352,6 +360,19 @@ export async function updateTransaction(id: string, formData: z.infer<typeof tra
             }
         })
 
+        // Se a transação tem evento vinculado e foi marcada como "paid",
+        // sincroniza o AgendaEvent automaticamente (baixa o agendamento)
+        const beingPaid = validatedFields.data.status === "paid" && transaction.status !== "paid"
+        if (beingPaid && transaction.eventId) {
+            await prisma.agendaEvent.update({
+                where: { id: transaction.eventId },
+                data: {
+                    notificationStatus: "ACTED_PDV",
+                    notificationActedAt: new Date(),
+                },
+            })
+        }
+
         revalidatePath("/dashboard/financeiro")
         revalidatePath("/dashboard/financeiro/transacoes")
         return { success: true }
@@ -360,4 +381,5 @@ export async function updateTransaction(id: string, formData: z.infer<typeof tra
         return { error: "Erro ao atualizar transação" }
     }
 }
+
 

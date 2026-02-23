@@ -9,7 +9,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { Calendar as CalendarIcon, Plus, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EventModal } from "./event-modal"
-import { createAgendaEvent, updateAgendaEvent, deleteAgendaEvent } from "@/app/actions/agenda"
+import { createAgendaEvent, updateAgendaEvent, deleteAgendaEvent, updateAttendanceStatus } from "@/app/actions/agenda"
 import { toast } from "sonner"
 import clsx from "clsx"
 
@@ -29,6 +29,11 @@ export interface AgendaEvent {
     customerId?: string | null
     customerEmail?: string | null
     customerPhone?: string | null
+    serviceId?: string | null
+    productId?: string | null
+    quoteId?: string | null
+    paymentStatus?: string | null       // null | PENDING | PAID | PARTIAL | CANCELLED
+    attendanceStatus?: string | null    // SCHEDULED | CONFIRMED | COMPLETED | CANCELLED | NO_SHOW
 }
 
 export interface AgendaContentProps {
@@ -56,6 +61,8 @@ export function AgendaContent({ initialEvents = [], products = [], services = []
     const [initialEmail, setInitialEmail] = useState<string | undefined>()
     const [initialPhone, setInitialPhone] = useState<string | undefined>()
 
+    const [editingEvent, setEditingEvent] = useState<any | null>(null)
+
     // Check URL params to auto-open new event (from Customer view)
     useEffect(() => {
         if (typeof window !== "undefined") {
@@ -76,7 +83,27 @@ export function AgendaContent({ initialEvents = [], products = [], services = []
         }
     }, [])
 
-    const [editingEvent, setEditingEvent] = useState<any | null>(null)
+    // Abre o modal de edição quando a URL contém ?eventId=XXX (navegação vinda do Financeiro)
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        const params = new URLSearchParams(window.location.search)
+        const eventId = params.get("eventId")
+        if (!eventId) return
+
+        // Limpa o param imediatamente para não re-disparar em futuras navegações
+        window.history.replaceState({}, document.title, window.location.pathname)
+
+        // Localiza o evento na lista já carregada e abre o modal
+        const found = initialEvents.find((e) => e.id === eventId)
+        if (found) {
+            // Pequeno delay para garantir que o calendário já está montado
+            setTimeout(() => {
+                setEditingEvent(found)
+                setModalOpen(true)
+            }, 100)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     const handleSelectSlot = ({ start, end }: { start: Date, end: Date }) => {
         setEditingEvent(null)
@@ -294,21 +321,29 @@ export function AgendaContent({ initialEvents = [], products = [], services = []
                         background-color: hsl(var(--primary)/0.03) !important;
                     }
                     .rbc-event {
-                        background-color: hsl(var(--primary)) !important;
-                        color: hsl(var(--primary-foreground)) !important;
+                        background-color: #6366f1;
+                        color: #fff !important;
                         border: none !important;
                         border-radius: 6px !important;
                         padding: 4px 8px !important;
                         font-size: 0.75rem !important;
                         font-weight: 500;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.15) !important;
                         transition: all 0.2s ease !important;
                         margin: 2px !important;
                     }
                     .rbc-event:hover {
-                        filter: brightness(1.1);
+                        filter: brightness(1.15);
                         transform: translateY(-1px);
                     }
+                    /* Status de Atendimento */
+                    .rbc-event.evt-scheduled  { background-color: #6366f1 !important; }
+                    .rbc-event.evt-confirmed  { background-color: #d97706 !important; }
+                    .rbc-event.evt-completed  { background-color: #16a34a !important; }
+                    .rbc-event.evt-cancelled  { background-color: #dc2626 !important; opacity: 0.8; }
+                    .rbc-event.evt-no-show    { background-color: #dc2626 !important; opacity: 0.7; }
+                    /* Pago mas ainda não concluído */
+                    .rbc-event.evt-paid-pending { background-color: #0891b2 !important; }
                     .rbc-button-link {
                        color: hsl(var(--foreground));
                        font-weight: 500;
@@ -352,8 +387,28 @@ export function AgendaContent({ initialEvents = [], products = [], services = []
                         selectable
                         onSelectSlot={handleSelectSlot}
                         onSelectEvent={handleSelectEvent}
+                        eventPropGetter={(event: any) => {
+                            const a = event.attendanceStatus
+                            const p = event.paymentStatus
+                            let cls = "evt-scheduled"
+                            if (a === "COMPLETED") cls = "evt-completed"
+                            else if (a === "CONFIRMED") cls = "evt-confirmed"
+                            else if (a === "CANCELLED") cls = "evt-cancelled"
+                            else if (a === "NO_SHOW") cls = "evt-no-show"
+                            else if (p === "PAID") cls = "evt-paid-pending"
+                            return { className: cls }
+                        }}
                         components={{
-                            toolbar: CustomToolbar
+                            toolbar: CustomToolbar,
+                            event: ({ event }: any) => (
+                                <div className="flex items-center gap-1 text-[11px] leading-tight truncate px-0.5">
+                                    <span className="truncate font-medium">{event.title}</span>
+                                    {event.attendanceStatus === "COMPLETED" && <span title="Atendido">✓</span>}
+                                    {event.attendanceStatus === "CONFIRMED" && <span title="Confirmado">●</span>}
+                                    {event.attendanceStatus === "NO_SHOW" && <span title="Não Realizado">✗</span>}
+                                    {event.paymentStatus === "PAID" && <span title="Pago">💰</span>}
+                                </div>
+                            )
                         }}
                         messages={{
                             next: "►",
@@ -374,6 +429,7 @@ export function AgendaContent({ initialEvents = [], products = [], services = []
             </div>
 
             <EventModal
+                key={editingEvent?.id || "new"}
                 open={modalOpen}
                 onOpenChange={(open) => {
                     setModalOpen(open)
@@ -392,6 +448,17 @@ export function AgendaContent({ initialEvents = [], products = [], services = []
                 initialCustomerName={editingEvent?.customerName || initialCustomer}
                 initialCustomerEmail={editingEvent?.customerEmail || initialEmail}
                 initialCustomerPhone={editingEvent?.customerPhone || initialPhone}
+                paymentStatus={editingEvent?.paymentStatus}
+                attendanceStatus={editingEvent?.attendanceStatus}
+                onAttendanceChange={editingEvent?.id ? async (status) => {
+                    const res = await updateAttendanceStatus(editingEvent.id!, status)
+                    if (res.success) {
+                        toast.success("Status de atendimento atualizado!")
+                        setEditingEvent({ ...editingEvent, attendanceStatus: status })
+                    } else {
+                        toast.error("Erro ao atualizar status")
+                    }
+                } : undefined}
                 products={products}
                 services={services}
                 quotes={quotes}

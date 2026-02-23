@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { CalendarIcon, MapPin, Users, Check, ChevronsUpDown, Package, FileText, Wrench, Plus, CirclePlus, Link as LinkIcon, UserPlus, Clock, Trash2 } from "lucide-react"
@@ -79,6 +79,10 @@ interface EventModalProps {
     eventTypes?: string[]
     onSave?: (event: any) => void
     onDelete?: () => void
+    // Status duplo (Opção D)
+    paymentStatus?: string | null
+    attendanceStatus?: string | null
+    onAttendanceChange?: (status: "SCHEDULED" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "NO_SHOW") => void
 }
 
 // Mocks removidos para garantir sistema limpo
@@ -110,28 +114,93 @@ export function EventModal({
     customers = [],
     eventTypes = [],
     onSave,
-    onDelete
+    onDelete,
+    paymentStatus,
+    attendanceStatus,
+    onAttendanceChange,
 }: EventModalProps) {
-    // Estado local para o formulário
-    const [titulo, setTitulo] = useState("")
-    const [tipoEvento, setTipoEvento] = useState("")
+    // ─── Helper: parseia a string de localização "Logradouro: X | Número: Y | ..." ───
+    const parseLocation = (loc?: string | null) => {
+        const r = { logradouro: "", numero: "", complemento: "", bairro: "", cidade: "", uf: "", cep: "", referencia: "" }
+        if (!loc) return r
+        if (loc.includes(" | ")) {
+            loc.split(" | ").forEach((seg: string) => {
+                const [key, ...rest] = seg.split(":")
+                if (rest.length > 0) {
+                    const val = rest.join(":").trim()
+                    if (key.trim() === "Logradouro") r.logradouro = val
+                    if (key.trim() === "Número") r.numero = val
+                    if (key.trim() === "Complemento") r.complemento = val
+                    if (key.trim() === "Bairro") r.bairro = val
+                    if (key.trim() === "Cidade") r.cidade = val
+                    if (key.trim() === "UF") r.uf = val
+                    if (key.trim() === "CEP") r.cep = val
+                    if (key.trim() === "Ref") r.referencia = val
+                } else {
+                    r.logradouro = loc
+                }
+            })
+        } else {
+            r.logradouro = loc
+        }
+        return r
+    }
+
+    // ─── Estados iniciados diretamente pelos props ────────────────────────────
+    // O componente pai usa key={eventId} para forçar remount ao trocar evento.
+    const loc = parseLocation(initialLocation)
+
+    const [titulo, setTitulo] = useState(initialTitle || "")
+    const [tipoEvento, setTipoEvento] = useState(initialType || "")
     const [tiposCustomizados, setTiposCustomizados] = useState<string[]>([])
     const [tipoSearch, setTipoSearch] = useState("")
+    const [clienteId, setClienteId] = useState(initialCustomerId || "")
+
+    // Datas
+    const [dataInicio, setDataInicio] = useState(
+        initialStart ? format(initialStart, "dd/MM/yyyy HH:mm") : format(new Date(), "dd/MM/yyyy HH:mm")
+    )
+    const [dataFim, setDataFim] = useState(
+        initialEnd ? format(initialEnd, "dd/MM/yyyy HH:mm") : format(new Date(Date.now() + 3600000), "dd/MM/yyyy HH:mm")
+    )
+    const [calendarOpenInicio, setCalendarOpenInicio] = useState(false)
+    const [calendarOpenFim, setCalendarOpenFim] = useState(false)
+
+    // Local
+    const [isLocal, setIsLocal] = useState(initialIsLocal ?? !!initialLocation)
+    const [endereco, setEndereco] = useState(initialLocation || "")
+    const [cep, setCep] = useState(loc.cep)
+    const [logradouro, setLogradouro] = useState(loc.logradouro)
+    const [numero, setNumero] = useState(loc.numero)
+    const [complemento, setComplemento] = useState(loc.complemento)
+    const [bairro, setBairro] = useState(loc.bairro)
+    const [cidade, setCidade] = useState(loc.cidade)
+    const [uf, setUf] = useState(loc.uf)
+    const [referencia, setReferencia] = useState(loc.referencia)
+
+    // Cliente
+    const [clienteOpen, setClienteOpen] = useState(false)
+    const [clienteSelecionado, setClienteSelecionado] = useState(initialCustomerName || "")
+    const [clienteEmail, setClienteEmail] = useState(initialCustomerEmail || "")
+    const [clienteTelefone, setClienteTelefone] = useState(initialCustomerPhone || "")
+    const [clienteSearch, setClienteSearch] = useState("")
+    const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
+
+    // Associações
+    const [enableProduct, setEnableProduct] = useState(!!initialProductId)
+    const [enableService, setEnableService] = useState(!!initialServiceId)
+    const [enableQuote, setEnableQuote] = useState(!!initialQuoteId)
+    const [productId, setProductId] = useState(initialProductId || "")
+    const [serviceId, setServiceId] = useState(initialServiceId || "")
+    const [quoteOpen, setQuoteOpen] = useState(false)
+    const [quoteId, setQuoteId] = useState(initialQuoteId || "")
 
     useEffect(() => {
         setTiposCustomizados(Array.from(new Set([...TIPOS_DE_EVENTO_MOCK, ...eventTypes])))
     }, [eventTypes])
-    const [clienteId, setClienteId] = useState(initialCustomerId || "")
-
-    // Datas (usando string DD/MM/YYYY HH:mm para facilitar a máscara e leitura visual)
-    const [dataInicio, setDataInicio] = useState(initialStart ? format(initialStart, "dd/MM/yyyy HH:mm") : format(new Date(), "dd/MM/yyyy HH:mm"))
-    const [dataFim, setDataFim] = useState(initialEnd ? format(initialEnd, "dd/MM/yyyy HH:mm") : format(new Date(Date.now() + 3600000), "dd/MM/yyyy HH:mm"))
-
-    // Estados para controle do Popover do calendário
-    const [calendarOpenInicio, setCalendarOpenInicio] = useState(false)
-    const [calendarOpenFim, setCalendarOpenFim] = useState(false)
 
     // Helper para extrair só a data do texto e alimentar o calendário
+
     const parseCalendarDate = (dateStr: string) => {
         if (!dateStr || dateStr.includes("_")) return new Date()
         const [day, month, year] = dateStr.split(" ")[0].split("/")
@@ -209,22 +278,9 @@ export function EventModal({
         }
     }
 
-    // Local / Serviço Externo
-    const [isLocal, setIsLocal] = useState(false)
-    const [endereco, setEndereco] = useState("") // Usado como fallback ou raw
-    const [cep, setCep] = useState("")
-    const [logradouro, setLogradouro] = useState("")
-    const [numero, setNumero] = useState("")
-    const [complemento, setComplemento] = useState("")
-    const [bairro, setBairro] = useState("")
-    const [cidade, setCidade] = useState("")
-    const [uf, setUf] = useState("")
-    const [referencia, setReferencia] = useState("")
-
     const buscarCEP = async (cepBusca: string) => {
         const cepLimpo = cepBusca.replace(/\D/g, "")
         if (cepLimpo.length !== 8) return
-
         try {
             const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`)
             const data = await res.json()
@@ -255,82 +311,6 @@ export function EventModal({
             toast.error("Selecione um cliente e certifique-se que ele tem endereço cadastrado.")
         }
     }
-
-    // Cliente
-    const [clienteOpen, setClienteOpen] = useState(false)
-    const [clienteSelecionado, setClienteSelecionado] = useState(initialCustomerName || "")
-    const [clienteEmail, setClienteEmail] = useState(initialCustomerEmail || "")
-    const [clienteTelefone, setClienteTelefone] = useState(initialCustomerPhone || "")
-    const [clienteSearch, setClienteSearch] = useState("")
-    const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
-
-    // Sincronizar preenchimento automático inicial
-    useEffect(() => {
-        if (open) {
-            setDataInicio(initialStart ? format(initialStart, "dd/MM/yyyy HH:mm") : format(new Date(), "dd/MM/yyyy HH:mm"))
-            setDataFim(initialEnd ? format(initialEnd, "dd/MM/yyyy HH:mm") : format(new Date(Date.now() + 3600000), "dd/MM/yyyy HH:mm"))
-            if (initialCustomerName) setClienteSelecionado(initialCustomerName)
-            if (initialCustomerEmail) setClienteEmail(initialCustomerEmail)
-            if (initialCustomerPhone) setClienteTelefone(initialCustomerPhone)
-            if (initialTitle) setTitulo(initialTitle)
-            if (initialType) setTipoEvento(initialType)
-            if (initialLocation) {
-                setEndereco(initialLocation)
-                if (initialLocation.includes(" | ")) {
-                    const parts = initialLocation.split(" | ")
-                    parts.forEach(p => {
-                        const [key, ...rest] = p.split(":")
-                        if (rest.length > 0) {
-                            const val = rest.join(":").trim()
-                            if (key.trim() === "Logradouro") setLogradouro(val)
-                            if (key.trim() === "Número") setNumero(val)
-                            if (key.trim() === "Complemento") setComplemento(val)
-                            if (key.trim() === "Bairro") setBairro(val)
-                            if (key.trim() === "Cidade") setCidade(val)
-                            if (key.trim() === "UF") setUf(val)
-                            if (key.trim() === "CEP") setCep(val)
-                            if (key.trim() === "Ref") setReferencia(val)
-                        } else {
-                            // Suporte a strings antigas sem chaves
-                            setLogradouro(initialLocation)
-                        }
-                    })
-                } else {
-                    setLogradouro(initialLocation)
-                }
-            }
-            if (initialIsLocal !== undefined) {
-                setIsLocal(initialIsLocal || !!initialLocation)
-            } else if (initialLocation) {
-                setIsLocal(true)
-            }
-            if (initialProductId) {
-                setProductId(initialProductId)
-                setEnableProduct(true)
-            }
-            if (initialServiceId) {
-                setServiceId(initialServiceId)
-                setEnableService(true)
-            }
-            if (initialQuoteId) {
-                setQuoteId(initialQuoteId)
-                setEnableQuote(true)
-            }
-            if (initialCustomerId) setClienteId(initialCustomerId)
-        }
-    }, [open, initialStart, initialEnd, initialCustomerName, initialCustomerEmail, initialCustomerPhone, initialTitle, initialType, initialLocation, initialIsLocal, initialProductId, initialServiceId, initialQuoteId, initialCustomerId])
-
-    // Associações (Múltiplas)
-    const [enableProduct, setEnableProduct] = useState(false)
-    const [enableService, setEnableService] = useState(false)
-    const [enableQuote, setEnableQuote] = useState(false)
-
-    const [productId, setProductId] = useState("")
-    const [serviceId, setServiceId] = useState("")
-
-    // Comboboxes States
-    const [quoteOpen, setQuoteOpen] = useState(false)
-    const [quoteId, setQuoteId] = useState("")
 
     const handleSave = () => {
         if (!dataInicio || !dataFim || dataInicio.length < 16 || dataFim.length < 16) {
@@ -420,11 +400,11 @@ export function EventModal({
             if (!val) resetForm();
             onOpenChange(val);
         }}>
-            <DialogContent className="sm:max-w-[700px] overflow-hidden p-0 rounded-2xl">
-                <div className="bg-gradient-to-r from-primary/10 via-background to-background p-6 border-b border-border/50">
+            <DialogContent className="sm:max-w-[700px] overflow-hidden p-0 rounded-2xl flex flex-col max-h-[90vh]">
+                <div className="bg-gradient-to-r from-primary/10 via-background to-background px-6 py-4 border-b border-border/50 shrink-0">
                     <DialogHeader>
-                        <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-                            <CalendarIcon className="h-6 w-6 text-primary" />
+                        <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                            <CalendarIcon className="h-5 w-5 text-primary" />
                             Novo Agendamento
                         </DialogTitle>
                         <DialogDescription>
@@ -433,10 +413,84 @@ export function EventModal({
                     </DialogHeader>
                 </div>
 
-                <div className="p-6 overflow-y-auto max-h-[70vh]">
+                {/* ── Painel de Status Duplo (exibido apenas em eventos existentes) ── */}
+                {(paymentStatus || attendanceStatus) && (
+                    <div className="px-4 py-2 bg-muted/30 border-b border-border/40 flex flex-wrap items-center gap-2 shrink-0">
+                        {/* Badge financeiro */}
+                        {paymentStatus && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground font-medium">Pagamento:</span>
+                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${paymentStatus === "PAID" ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30" :
+                                    paymentStatus === "PENDING" ? "bg-amber-500/15 text-amber-600 border border-amber-500/30" :
+                                        paymentStatus === "CANCELLED" ? "bg-red-500/15 text-red-600 border border-red-500/30" :
+                                            "bg-muted text-muted-foreground border border-border"
+                                    }`}>
+                                    {paymentStatus === "PAID" && "💰 Pago"}
+                                    {paymentStatus === "PENDING" && "⏳ Pendente"}
+                                    {paymentStatus === "PARTIAL" && "🔸 Parcial"}
+                                    {paymentStatus === "CANCELLED" && "✗ Cancelado"}
+                                </span>
+                            </div>
+                        )}
+
+                        {/* Badge de atendimento */}
+                        {attendanceStatus && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground font-medium">Atendimento:</span>
+                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${attendanceStatus === "COMPLETED" ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30" :
+                                    attendanceStatus === "CONFIRMED" ? "bg-blue-500/15 text-blue-600 border border-blue-500/30" :
+                                        attendanceStatus === "SCHEDULED" ? "bg-primary/10 text-primary border border-primary/30" :
+                                            attendanceStatus === "CANCELLED" ? "bg-red-500/15 text-red-600 border border-red-500/30" :
+                                                attendanceStatus === "NO_SHOW" ? "bg-orange-500/15 text-orange-600 border border-orange-500/30" :
+                                                    "bg-muted text-muted-foreground border border-border"
+                                    }`}>
+                                    {attendanceStatus === "SCHEDULED" && "📅 Agendado"}
+                                    {attendanceStatus === "CONFIRMED" && "✓ Confirmado"}
+                                    {attendanceStatus === "COMPLETED" && "✅ Concluído"}
+                                    {attendanceStatus === "CANCELLED" && "✗ Cancelado"}
+                                    {attendanceStatus === "NO_SHOW" && "⚠ Não Realizado"}
+                                </span>
+                            </div>
+                        )}
+
+                        {/* Ações rápidas de atendimento */}
+                        {onAttendanceChange && (
+                            <div className="ml-auto flex items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground">Atualizar:</span>
+                                {attendanceStatus !== "CONFIRMED" && attendanceStatus !== "COMPLETED" && (
+                                    <button onClick={() => onAttendanceChange("CONFIRMED")}
+                                        className="rounded-lg border border-blue-400/40 bg-blue-500/10 px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-500/20 transition-colors">
+                                        Confirmado
+                                    </button>
+                                )}
+                                {attendanceStatus !== "COMPLETED" && (
+                                    <button onClick={() => onAttendanceChange("COMPLETED")}
+                                        className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-600 hover:bg-emerald-500/20 transition-colors">
+                                        Concluído
+                                    </button>
+                                )}
+                                {attendanceStatus !== "NO_SHOW" && attendanceStatus !== "COMPLETED" && (
+                                    <button onClick={() => onAttendanceChange("NO_SHOW")}
+                                        className="rounded-lg border border-orange-400/40 bg-orange-500/10 px-2 py-1 text-[11px] font-semibold text-orange-600 hover:bg-orange-500/20 transition-colors">
+                                        Não Realizado
+                                    </button>
+                                )}
+                                {attendanceStatus !== "CANCELLED" && (
+                                    <button onClick={() => onAttendanceChange("CANCELLED")}
+                                        className="rounded-lg border border-red-400/40 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-500/20 transition-colors">
+                                        Cancelar
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div className="flex-1 min-h-0 overflow-y-auto p-6">
                     <div className="grid gap-6">
 
                         {/* Linha 1: Título e Tipo */}
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="titulo">Título Principal (Opcional)</Label>
@@ -988,7 +1042,7 @@ export function EventModal({
                     initialName={clienteSearch}
                 />
 
-                <DialogFooter className="p-6 border-t border-border/50 bg-muted/10 flex justify-between items-center sm:justify-between w-full">
+                <DialogFooter className="p-4 border-t border-border/50 bg-muted/10 flex justify-between items-center sm:justify-between w-full shrink-0">
                     <div className="flex-1">
                         {onDelete && (
                             <AlertDialog>

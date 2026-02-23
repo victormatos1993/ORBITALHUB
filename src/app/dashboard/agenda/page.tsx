@@ -34,7 +34,9 @@ export default async function AgendaPage() {
         customerPhone: ev.customerPhone,
         productId: ev.productId,
         serviceId: ev.serviceId,
-        quoteId: ev.quoteId
+        quoteId: ev.quoteId,
+        paymentStatus: ev.paymentStatus ?? null,
+        attendanceStatus: ev.attendanceStatus ?? "SCHEDULED",
     }))
 
     const products = productsRes.products || []
