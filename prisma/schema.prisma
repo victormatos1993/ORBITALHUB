@@ -43,6 +43,8 @@ model User {
   createdTransactions Transaction[]  @relation("TransactionCreator")
   transactions        Transaction[]
   notifications       Notification[]
+  contasFinanceiras   ContaFinanceira[]
+  maquinasCartao      MaquinaCartao[]
   parentAdmin         User?          @relation("TeamMembers", fields: [parentAdminId], references: [id])
   teamMembers         User[]         @relation("TeamMembers")
 }
@@ -116,11 +118,17 @@ model VerificationToken {
 
 model Category {
   id           String        @id @default(cuid())
+  code         String?
   name         String
   type         String
   color        String?
+  level        Int           @default(0)
+  parentId     String?
+  isSystem     Boolean       @default(false)
   userId       String
   createdById  String?
+  parent       Category?     @relation("CategoryTree", fields: [parentId], references: [id])
+  children     Category[]    @relation("CategoryTree")
   createdBy    User?         @relation("CategoryCreator", fields: [createdById], references: [id])
   user         User          @relation(fields: [userId], references: [id])
   transactions Transaction[]
@@ -174,30 +182,80 @@ model Supplier {
 }
 
 model Transaction {
-  id          String       @id @default(cuid())
-  description String
-  amount      Decimal
-  type        String
-  date        DateTime
-  status      String
-  categoryId  String?
-  customerId  String?
-  supplierId  String?
-  quoteId     String?
-  userId      String
-  saleId      String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  eventId     String?
-  createdById String?
-  category    Category?    @relation(fields: [categoryId], references: [id])
-  createdBy   User?        @relation("TransactionCreator", fields: [createdById], references: [id])
-  customer    Customer?    @relation(fields: [customerId], references: [id])
-  event       AgendaEvent? @relation(fields: [eventId], references: [id])
-  quote       Quote?       @relation(fields: [quoteId], references: [id])
-  sale        Sale?        @relation(fields: [saleId], references: [id])
-  supplier    Supplier?    @relation(fields: [supplierId], references: [id])
-  user        User         @relation(fields: [userId], references: [id])
+  id                 String            @id @default(cuid())
+  description        String
+  amount             Decimal
+  type               String
+  date               DateTime
+  status             String
+  categoryId         String?
+  customerId         String?
+  supplierId         String?
+  quoteId            String?
+  userId             String
+  saleId             String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  eventId            String?
+  createdById        String?
+  contaFinanceiraId  String?
+  maquinaCartaoId    String?
+  paidAt             DateTime?
+  competenceDate     DateTime?
+  installmentNumber  Int?
+  installmentTotal   Int?
+  taxaAplicada       Decimal?
+  category           Category?         @relation(fields: [categoryId], references: [id])
+  contaFinanceira    ContaFinanceira?  @relation(fields: [contaFinanceiraId], references: [id])
+  maquinaCartao      MaquinaCartao?    @relation(fields: [maquinaCartaoId], references: [id])
+  createdBy          User?             @relation("TransactionCreator", fields: [createdById], references: [id])
+  customer           Customer?         @relation(fields: [customerId], references: [id])
+  event              AgendaEvent?      @relation(fields: [eventId], references: [id])
+  quote              Quote?            @relation(fields: [quoteId], references: [id])
+  sale               Sale?             @relation(fields: [saleId], references: [id])
+  supplier           Supplier?         @relation(fields: [supplierId], references: [id])
+  user               User              @relation(fields: [userId], references: [id])
+}
+
+/// Contas financeiras — onde o dinheiro está (Caixa, Banco, Carteira Digital)
+model ContaFinanceira {
+  id           String        @id @default(cuid())
+  name         String
+  type         String        // CAIXA | BANCO | CARTEIRA_DIGITAL
+  balance      Decimal       @default(0)
+  active       Boolean       @default(true)
+  isDefault    Boolean       @default(false)
+  userId       String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+}
+
+/// Maquininhas de cartão — cada empresa pode ter múltiplas
+model MaquinaCartao {
+  id               String        @id @default(cuid())
+  name             String
+  active           Boolean       @default(true)
+  diasRecebimento  Int           @default(30)
+  modoRecebimento  String        @default("PARCELADO") // PARCELADO | ANTECIPADO
+  userId           String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  user             User          @relation(fields: [userId], references: [id])
+  taxas            TaxaMaquina[]
+  transactions     Transaction[]
+}
+
+/// Taxas por método de pagamento para cada maquininha
+model TaxaMaquina {
+  id               String        @id @default(cuid())
+  maquinaId        String
+  metodoPagamento  String        // DEBITO | CREDITO_1X | CREDITO_2X | ... | CREDITO_12X | VOUCHER | PIX
+  taxa             Decimal       // 0.035 = 3.5%
+  maquina          MaquinaCartao @relation(fields: [maquinaId], references: [id], onDelete: Cascade)
+
+  @@unique([maquinaId, metodoPagamento])
 }
 
 model Product {
@@ -342,6 +400,10 @@ model AgendaEvent {
   // ── Status operacional do atendimento ────────────────────────────────────
   // null = não gerenciado | SCHEDULED | CONFIRMED | COMPLETED | CANCELLED | NO_SHOW
   attendanceStatus       String?       @default("SCHEDULED")
+  // ── Recorrência ─────────────────────────────────────────────────────
+  recurrenceRule         String?       // WEEKLY | BIWEEKLY | MONTHLY | null
+  recurrenceCount        Int?          // quantas ocorrências
+  recurrenceGroupId      String?       // ID do grupo de recorrência
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   createdById            String?

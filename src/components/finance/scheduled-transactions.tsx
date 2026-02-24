@@ -1,15 +1,22 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CalendarClock, ShoppingCart, CalendarSearch, X } from "lucide-react"
+import {
+    CalendarClock, ShoppingCart, CalendarSearch, X,
+    Calendar, CalendarDays, List, ChevronLeft, ChevronRight, Filter,
+    Receipt, TrendingUp,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { cancelEventAndTransaction } from "@/app/actions/agenda"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, addMonths, subMonths, isToday } from "date-fns"
+import { ptBR } from "date-fns/locale"
 
 interface Transaction {
     id: string
@@ -32,12 +39,17 @@ interface ScheduledTransactionsProps {
     services?: any[]
 }
 
+type ViewMode = "month" | "week" | "today" | "all"
+
 export function ScheduledTransactions({
     data,
     className,
 }: ScheduledTransactionsProps) {
     const router = useRouter()
     const [cancelling, setCancelling] = useState<string | null>(null)
+    const [viewMode, setViewMode] = useState<ViewMode>("month")
+    const [selectedMonth, setSelectedMonth] = useState(new Date())
+    const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all")
 
     const formatCurrency = (value: number) =>
         new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
@@ -57,8 +69,6 @@ export function ScheduledTransactions({
         window.location.href = `/dashboard/vendas/pdv?${params.toString()}`
     }
 
-    // Navega para a agenda com o eventId na URL.
-    // A própria página da agenda detecta o parâmetro e abre o modal do evento.
     const handleOpenAgenda = (transaction: Transaction) => {
         if (!transaction.eventId) {
             toast.error("Este agendamento não possui um evento vinculado.")
@@ -80,9 +90,45 @@ export function ScheduledTransactions({
         setCancelling(null)
     }
 
+    // ── Filtragem ──
+    const filtered = useMemo(() => {
+        let result = [...data]
+
+        // Filtro por tipo
+        if (typeFilter !== "all") {
+            result = result.filter(t => t.type === typeFilter)
+        }
+
+        // Filtro por período
+        if (viewMode === "month") {
+            const start = startOfMonth(selectedMonth)
+            const end = endOfMonth(selectedMonth)
+            result = result.filter(t => {
+                const d = new Date(t.date + "T12:00:00")
+                return isWithinInterval(d, { start, end })
+            })
+        } else if (viewMode === "week") {
+            const start = startOfWeek(new Date(), { weekStartsOn: 1 })
+            const end = endOfWeek(new Date(), { weekStartsOn: 1 })
+            result = result.filter(t => {
+                const d = new Date(t.date + "T12:00:00")
+                return isWithinInterval(d, { start, end })
+            })
+        } else if (viewMode === "today") {
+            const today = format(new Date(), "yyyy-MM-dd")
+            result = result.filter(t => t.date === today)
+        }
+
+        return result
+    }, [data, viewMode, selectedMonth, typeFilter])
+
+    const monthLabel = format(selectedMonth, "MMMM yyyy", { locale: ptBR })
+    const incomeCount = filtered.filter(t => t.type === "income").length
+    const expenseCount = filtered.filter(t => t.type === "expense").length
+
     return (
         <Card className={className}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="pb-2">
                 <div className="space-y-1">
                     <CardTitle className="text-xl flex items-center gap-2">
                         <CalendarClock className="h-5 w-5 text-primary" strokeWidth={2.5} />
@@ -91,7 +137,86 @@ export function ScheduledTransactions({
                     <CardDescription>Eventos futuros que gerarão receita ou despesa.</CardDescription>
                 </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+                {/* ── Filtros ── */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Filter className="h-3.5 w-3.5" />
+                    </div>
+
+                    {/* Período */}
+                    <div className="flex rounded-lg border overflow-hidden text-xs">
+                        {([
+                            { value: "today" as ViewMode, label: "Hoje", icon: <Calendar className="h-3 w-3" /> },
+                            { value: "week" as ViewMode, label: "Semana", icon: <CalendarDays className="h-3 w-3" /> },
+                            { value: "month" as ViewMode, label: "Mês", icon: <CalendarDays className="h-3 w-3" /> },
+                            { value: "all" as ViewMode, label: "Tudo", icon: <List className="h-3 w-3" /> },
+                        ]).map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => setViewMode(opt.value)}
+                                className={`flex items-center gap-1 px-2.5 py-1.5 font-medium transition-colors ${viewMode === opt.value
+                                    ? "bg-primary text-primary-foreground"
+                                    : "hover:bg-muted text-muted-foreground"
+                                    }`}
+                            >
+                                {opt.icon} {opt.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Navegação de mês */}
+                    {viewMode === "month" && (
+                        <div className="flex items-center gap-0.5">
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}>
+                                <ChevronLeft className="h-3.5 w-3.5" />
+                            </Button>
+                            <span className="text-xs font-medium min-w-[100px] text-center capitalize">{monthLabel}</span>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => addMonths(prev, 1))}>
+                                <ChevronRight className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    )}
+
+                    <div className="h-4 w-px bg-border mx-0.5 hidden sm:block" />
+
+                    {/* Tipo */}
+                    <div className="flex rounded-lg border overflow-hidden text-xs">
+                        {([
+                            { value: "all" as const, label: "Todas" },
+                            { value: "income" as const, label: "Receitas" },
+                            { value: "expense" as const, label: "Despesas" },
+                        ]).map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => setTypeFilter(opt.value)}
+                                className={`px-2.5 py-1.5 font-medium transition-colors ${typeFilter === opt.value
+                                    ? "bg-primary text-primary-foreground"
+                                    : "hover:bg-muted text-muted-foreground"
+                                    }`}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Contadores */}
+                    <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                        {incomeCount > 0 && (
+                            <span className="flex items-center gap-1 text-emerald-600">
+                                <TrendingUp className="h-3 w-3" /> {incomeCount}
+                            </span>
+                        )}
+                        {expenseCount > 0 && (
+                            <span className="flex items-center gap-1 text-red-500">
+                                <Receipt className="h-3 w-3" /> {expenseCount}
+                            </span>
+                        )}
+                        <span>{filtered.length} registro{filtered.length !== 1 ? "s" : ""}</span>
+                    </div>
+                </div>
+
+                {/* ── Tabela ── */}
                 <div className="rounded-md border border-dashed border-primary/20 bg-primary/5 p-1">
                     <Table>
                         <TableHeader>
@@ -103,22 +228,34 @@ export function ScheduledTransactions({
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {data.length === 0 ? (
+                            {filtered.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={4} className="text-center py-8 text-sm text-muted-foreground">
-                                        Nenhum agendamento futuro com impacto financeiro.
+                                        {viewMode === "all"
+                                            ? "Nenhum agendamento futuro com impacto financeiro."
+                                            : `Nenhuma transação agendada para ${viewMode === "month" ? monthLabel : viewMode === "week" ? "esta semana" : "hoje"}.`}
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                data.map((transaction) => {
+                                filtered.map((transaction) => {
                                     const isCancelling = cancelling === transaction.id
+                                    const isEvent = !!transaction.eventId
+                                    const isIncome = transaction.type === "income"
+
                                     return (
                                         <TableRow key={transaction.id} className="group transition-colors">
                                             <TableCell>
-                                                <span className="font-semibold text-sm">{transaction.description}</span>
+                                                <div className="flex items-center gap-2">
+                                                    {isEvent ? (
+                                                        <CalendarSearch className="h-3.5 w-3.5 text-primary shrink-0" />
+                                                    ) : (
+                                                        <Receipt className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                    )}
+                                                    <span className="font-semibold text-sm">{transaction.description}</span>
+                                                </div>
                                             </TableCell>
-                                            <TableCell className={`text-right font-bold text-sm ${transaction.type === "income" ? "text-emerald-600" : "text-destructive"}`}>
-                                                {transaction.type === "expense" ? "-" : "+"}{formatCurrency(transaction.amount)}
+                                            <TableCell className={`text-right font-bold text-sm ${isIncome ? "text-emerald-600" : "text-destructive"}`}>
+                                                {isIncome ? "+" : "-"}{formatCurrency(transaction.amount)}
                                             </TableCell>
                                             <TableCell className="text-right text-sm">
                                                 <Badge variant="outline" className="font-medium bg-background">
@@ -127,30 +264,32 @@ export function ScheduledTransactions({
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex items-center justify-end gap-1.5">
-                                                    {/* Abrir PDV */}
-                                                    <button
-                                                        onClick={() => handleOpenPDV(transaction)}
-                                                        title="Abrir no PDV"
-                                                        className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-                                                    >
-                                                        <ShoppingCart className="h-3 w-3" />
-                                                        PDV
-                                                    </button>
+                                                    {/* PDV — somente para receita de eventos da agenda */}
+                                                    {isIncome && isEvent && (
+                                                        <button
+                                                            onClick={() => handleOpenPDV(transaction)}
+                                                            title="Faturar no PDV"
+                                                            className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+                                                        >
+                                                            <ShoppingCart className="h-3 w-3" />
+                                                            PDV
+                                                        </button>
+                                                    )}
 
-                                                    {/* Ver agendamento — navega para Agenda e abre o modal do evento */}
-                                                    {transaction.eventId && (
+                                                    {/* Ver agendamento */}
+                                                    {isEvent && (
                                                         <button
                                                             onClick={() => handleOpenAgenda(transaction)}
                                                             title="Ver na Agenda"
                                                             className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                                                         >
                                                             <CalendarSearch className="h-3 w-3" />
-                                                            Agendamento
+                                                            Agenda
                                                         </button>
                                                     )}
 
-                                                    {/* Cancelar */}
-                                                    {transaction.eventId && (
+                                                    {/* Cancelar — somente eventos */}
+                                                    {isEvent && (
                                                         <button
                                                             onClick={() => handleCancel(transaction)}
                                                             disabled={isCancelling}
@@ -162,6 +301,11 @@ export function ScheduledTransactions({
                                                                 : <X className="h-3.5 w-3.5" />
                                                             }
                                                         </button>
+                                                    )}
+
+                                                    {/* Despesas sem evento — sem ações (gerenciadas em Contas a Pagar) */}
+                                                    {!isEvent && (
+                                                        <span className="text-[11px] text-muted-foreground italic">Contas a Pagar</span>
                                                     )}
                                                 </div>
                                             </TableCell>

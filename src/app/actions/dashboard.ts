@@ -2,7 +2,7 @@
 
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { startOfMonth, endOfMonth, subMonths } from "date-fns"
+import { startOfMonth, endOfMonth, subMonths, startOfDay, endOfDay } from "date-fns"
 import { getTenantInfo } from "@/lib/auth-utils"
 
 function pctChange(current: number, previous: number): number {
@@ -20,41 +20,61 @@ export interface DashboardData {
     totalExpensesTrend: number
     newCustomers: number
     newCustomersTrend: number
-    // Bottom cards
+    // Financial
     cashBalance: number
     accountsReceivable: number
     accountsReceivableCount: number
     accountsPayable: number
     accountsPayableCount: number
-    // Recent activity
-    recentActivity: {
+    // Agenda
+    todayEvents: {
         id: string
-        type: "income" | "expense" | "sale" | "customer"
         title: string
-        subtitle: string
-        amount: number
-        time: Date
+        type: string
+        startDate: Date
+        endDate: Date
+        customerName: string | null
+        attendanceStatus: string | null
+        paymentStatus: string | null
     }[]
+    todayEventsCount: number
+    weekEventsCount: number
+    // Stock
+    lowStockProducts: {
+        id: string
+        name: string
+        stockQuantity: number
+        price: number
+    }[]
+    lowStockCount: number
+    totalProducts: number
+    // Quotes
+    openQuotes: {
+        id: string
+        number: number
+        clientName: string
+        totalAmount: number
+        status: string
+        createdAt: Date
+    }[]
+    openQuotesCount: number
+    openQuotesValue: number
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
     const { tenantId } = await getTenantInfo()
 
     const emptyData: DashboardData = {
-        totalRevenue: 0,
-        totalRevenueTrend: 0,
-        salesCount: 0,
-        salesCountTrend: 0,
-        totalExpenses: 0,
-        totalExpensesTrend: 0,
-        newCustomers: 0,
-        newCustomersTrend: 0,
+        totalRevenue: 0, totalRevenueTrend: 0,
+        salesCount: 0, salesCountTrend: 0,
+        totalExpenses: 0, totalExpensesTrend: 0,
+        newCustomers: 0, newCustomersTrend: 0,
         cashBalance: 0,
-        accountsReceivable: 0,
-        accountsReceivableCount: 0,
-        accountsPayable: 0,
-        accountsPayableCount: 0,
-        recentActivity: [],
+        accountsReceivable: 0, accountsReceivableCount: 0,
+        accountsPayable: 0, accountsPayableCount: 0,
+        todayEvents: [], todayEventsCount: 0, weekEventsCount: 0,
+        lowStockProducts: [], lowStockCount: 0, totalProducts: 0,
+        openQuotes: [], openQuotesCount: 0, openQuotesValue: 0,
     }
 
     if (!tenantId) return emptyData
@@ -64,12 +84,33 @@ export async function getDashboardData(): Promise<DashboardData> {
     const currentMonthEnd = endOfMonth(now)
     const lastMonthStart = startOfMonth(subMonths(now, 1))
     const lastMonthEnd = endOfMonth(subMonths(now, 1))
+    const todayStart = startOfDay(now)
+    const todayEnd = endOfDay(now)
+    // Week boundaries (Mon-Sun)
+    const dayOfWeek = now.getDay()
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+    const weekStart = new Date(now)
+    weekStart.setDate(now.getDate() - mondayOffset)
+    weekStart.setHours(0, 0, 0, 0)
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekStart.getDate() + 6)
+    weekEnd.setHours(23, 59, 59, 999)
 
     try {
-        // ════════════════════════════════════════════
-        //  1. RECEITA DO MÊS (income transactions paid)
-        // ════════════════════════════════════════════
-        const [currentIncomeAgg, lastIncomeAgg] = await Promise.all([
+        // Run all queries in parallel for performance
+        const [
+            currentIncomeAgg, lastIncomeAgg,
+            currentSalesCount, lastSalesCount,
+            currentExpenseAgg, lastExpenseAgg,
+            currentNewCustomers, lastNewCustomers,
+            allIncomeAgg, allExpenseAgg,
+            receivableAgg, receivableCount,
+            payableAgg, payableCount,
+            todayEvents, weekEventsCount,
+            lowStockProducts, lowStockCount, totalProducts,
+            openQuotes, openQuotesCount, openQuotesAgg,
+        ] = await Promise.all([
+            // 1. Revenue
             prisma.transaction.aggregate({
                 _sum: { amount: true },
                 where: { userId: tenantId, type: "income", status: "paid", date: { gte: currentMonthStart, lte: currentMonthEnd } }
@@ -78,26 +119,14 @@ export async function getDashboardData(): Promise<DashboardData> {
                 _sum: { amount: true },
                 where: { userId: tenantId, type: "income", status: "paid", date: { gte: lastMonthStart, lte: lastMonthEnd } }
             }),
-        ])
-        const totalRevenue = Number(currentIncomeAgg._sum.amount) || 0
-        const lastRevenue = Number(lastIncomeAgg._sum.amount) || 0
-
-        // ════════════════════════════════════════════
-        //  2. VENDAS DO MÊS (sales count)
-        // ════════════════════════════════════════════
-        const [currentSalesCount, lastSalesCount] = await Promise.all([
+            // 2. Sales count
             prisma.sale.count({
                 where: { userId: tenantId, date: { gte: currentMonthStart, lte: currentMonthEnd } }
             }),
             prisma.sale.count({
                 where: { userId: tenantId, date: { gte: lastMonthStart, lte: lastMonthEnd } }
             }),
-        ])
-
-        // ════════════════════════════════════════════
-        //  3. DESPESAS DO MÊS (expense transactions paid)
-        // ════════════════════════════════════════════
-        const [currentExpenseAgg, lastExpenseAgg] = await Promise.all([
+            // 3. Expenses
             prisma.transaction.aggregate({
                 _sum: { amount: true },
                 where: { userId: tenantId, type: "expense", status: "paid", date: { gte: currentMonthStart, lte: currentMonthEnd } }
@@ -106,26 +135,14 @@ export async function getDashboardData(): Promise<DashboardData> {
                 _sum: { amount: true },
                 where: { userId: tenantId, type: "expense", status: "paid", date: { gte: lastMonthStart, lte: lastMonthEnd } }
             }),
-        ])
-        const totalExpenses = Number(currentExpenseAgg._sum.amount) || 0
-        const lastExpenses = Number(lastExpenseAgg._sum.amount) || 0
-
-        // ════════════════════════════════════════════
-        //  4. NOVOS CLIENTES DO MÊS
-        // ════════════════════════════════════════════
-        const [currentNewCustomers, lastNewCustomers] = await Promise.all([
+            // 4. Customers
             prisma.customer.count({
                 where: { userId: tenantId, createdAt: { gte: currentMonthStart, lte: currentMonthEnd } }
             }),
             prisma.customer.count({
                 where: { userId: tenantId, createdAt: { gte: lastMonthStart, lte: lastMonthEnd } }
             }),
-        ])
-
-        // ════════════════════════════════════════════
-        //  5. SALDO EM CAIXA (all-time income paid - expense paid)
-        // ════════════════════════════════════════════
-        const [allIncomeAgg, allExpenseAgg] = await Promise.all([
+            // 5. Cash balance
             prisma.transaction.aggregate({
                 _sum: { amount: true },
                 where: { userId: tenantId, type: "income", status: "paid" }
@@ -134,92 +151,81 @@ export async function getDashboardData(): Promise<DashboardData> {
                 _sum: { amount: true },
                 where: { userId: tenantId, type: "expense", status: "paid" }
             }),
+            // 6. Receivables
+            prisma.transaction.aggregate({
+                _sum: { amount: true },
+                where: { userId: tenantId, type: "income", status: "pending" }
+            }),
+            prisma.transaction.count({
+                where: { userId: tenantId, type: "income", status: "pending" }
+            }),
+            // 7. Payables
+            prisma.transaction.aggregate({
+                _sum: { amount: true },
+                where: { userId: tenantId, type: "expense", status: "pending" }
+            }),
+            prisma.transaction.count({
+                where: { userId: tenantId, type: "expense", status: "pending" }
+            }),
+            // 8. Today's agenda events
+            prisma.agendaEvent.findMany({
+                where: {
+                    userId: tenantId,
+                    startDate: { gte: todayStart, lte: todayEnd },
+                    attendanceStatus: { notIn: ["CANCELLED", "NO_SHOW"] },
+                },
+                orderBy: { startDate: "asc" },
+                select: {
+                    id: true, title: true, type: true,
+                    startDate: true, endDate: true,
+                    customerName: true,
+                    attendanceStatus: true,
+                    paymentStatus: true,
+                },
+            }),
+            // 9. Week events count
+            prisma.agendaEvent.count({
+                where: {
+                    userId: tenantId,
+                    startDate: { gte: weekStart, lte: weekEnd },
+                    attendanceStatus: { notIn: ["CANCELLED", "NO_SHOW"] },
+                },
+            }),
+            // 10. Low stock products
+            prisma.product.findMany({
+                where: { userId: tenantId, manageStock: true, stockQuantity: { lte: 5 } },
+                orderBy: { stockQuantity: "asc" },
+                take: 6,
+                select: { id: true, name: true, stockQuantity: true, price: true },
+            }),
+            prisma.product.count({
+                where: { userId: tenantId, manageStock: true, stockQuantity: { lte: 5 } },
+            }),
+            prisma.product.count({
+                where: { userId: tenantId },
+            }),
+            // 11. Open quotes
+            prisma.quote.findMany({
+                where: { userId: tenantId, status: { in: ["DRAFT", "SENT"] } },
+                orderBy: { createdAt: "desc" },
+                take: 5,
+                select: { id: true, number: true, clientName: true, totalAmount: true, status: true, createdAt: true },
+            }),
+            prisma.quote.count({
+                where: { userId: tenantId, status: { in: ["DRAFT", "SENT"] } },
+            }),
+            prisma.quote.aggregate({
+                _sum: { totalAmount: true },
+                where: { userId: tenantId, status: { in: ["DRAFT", "SENT"] } },
+            }),
         ])
+
+        // Build revenue numbers
+        const totalRevenue = Number(currentIncomeAgg._sum.amount) || 0
+        const lastRevenue = Number(lastIncomeAgg._sum.amount) || 0
+        const totalExpenses = Number(currentExpenseAgg._sum.amount) || 0
+        const lastExpenses = Number(lastExpenseAgg._sum.amount) || 0
         const cashBalance = (Number(allIncomeAgg._sum.amount) || 0) - (Number(allExpenseAgg._sum.amount) || 0)
-
-        // ════════════════════════════════════════════
-        //  6. CONTAS A RECEBER (income pending)
-        // ════════════════════════════════════════════
-        const [receivableAgg, receivableCount] = await Promise.all([
-            prisma.transaction.aggregate({
-                _sum: { amount: true },
-                where: { userId: tenantId, type: "income", status: "pending" }
-            }),
-            prisma.transaction.count({
-                where: { userId: tenantId, type: "income", status: "pending" }
-            }),
-        ])
-
-        // ════════════════════════════════════════════
-        //  7. CONTAS A PAGAR (expense pending)
-        // ════════════════════════════════════════════
-        const [payableAgg, payableCount] = await Promise.all([
-            prisma.transaction.aggregate({
-                _sum: { amount: true },
-                where: { userId: tenantId, type: "expense", status: "pending" }
-            }),
-            prisma.transaction.count({
-                where: { userId: tenantId, type: "expense", status: "pending" }
-            }),
-        ])
-
-        // ════════════════════════════════════════════
-        //  8. ATIVIDADE RECENTE (últimas 8 transações + vendas)
-        // ════════════════════════════════════════════
-        const [recentTransactions, recentSales] = await Promise.all([
-            prisma.transaction.findMany({
-                where: { userId: tenantId },
-                orderBy: { createdAt: "desc" },
-                take: 5,
-                include: {
-                    customer: { select: { name: true } },
-                    supplier: { select: { name: true } },
-                    category: { select: { name: true } },
-                }
-            }),
-            prisma.sale.findMany({
-                where: { userId: tenantId },
-                orderBy: { createdAt: "desc" },
-                take: 5,
-                include: {
-                    customer: { select: { name: true } },
-                    items: { select: { quantity: true } },
-                }
-            }),
-        ])
-
-        const activity: DashboardData["recentActivity"] = []
-
-        for (const t of recentTransactions) {
-            const contactName = t.type === "income"
-                ? (t.customer?.name || t.category?.name || "—")
-                : (t.supplier?.name || t.category?.name || "—")
-
-            activity.push({
-                id: t.id,
-                type: t.type as "income" | "expense",
-                title: t.description,
-                subtitle: contactName,
-                amount: Number(t.amount),
-                time: t.createdAt,
-            })
-        }
-
-        for (const s of recentSales) {
-            const itemCount = s.items.reduce((acc, i) => acc + i.quantity, 0)
-            activity.push({
-                id: s.id,
-                type: "sale",
-                title: `Venda #${s.id.slice(-4).toUpperCase()}`,
-                subtitle: `${s.customer?.name || "Cliente avulso"} — ${itemCount} ${itemCount === 1 ? "item" : "itens"}`,
-                amount: Number(s.totalAmount),
-                time: s.createdAt,
-            })
-        }
-
-        // Sort by time desc and take top 6
-        activity.sort((a, b) => b.time.getTime() - a.time.getTime())
-        const recentActivity = activity.slice(0, 6)
 
         return {
             totalRevenue,
@@ -235,7 +241,18 @@ export async function getDashboardData(): Promise<DashboardData> {
             accountsReceivableCount: receivableCount,
             accountsPayable: Number(payableAgg._sum.amount) || 0,
             accountsPayableCount: payableCount,
-            recentActivity,
+            todayEvents: todayEvents.map(e => ({
+                ...e,
+                price: 0,
+            })),
+            todayEventsCount: todayEvents.length,
+            weekEventsCount,
+            lowStockProducts: lowStockProducts.map(p => ({ ...p, price: Number(p.price) })),
+            lowStockCount,
+            totalProducts,
+            openQuotes: openQuotes.map(q => ({ ...q, totalAmount: Number(q.totalAmount) })),
+            openQuotesCount,
+            openQuotesValue: Number(openQuotesAgg._sum.totalAmount) || 0,
         }
     } catch (error) {
         console.error("Erro ao buscar dados do dashboard:", error)

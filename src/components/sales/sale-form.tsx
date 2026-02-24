@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
@@ -65,17 +65,22 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import CurrencyInput from "react-currency-input-field"
 
-import { createSale } from "@/app/actions/sales"
+import { createSale, PaymentEntry } from "@/app/actions/sales"
 import { getCustomers, createCustomer } from "@/app/actions/customer"
 import { getSuppliers } from "@/app/actions/supplier"
 import { getProducts } from "@/app/actions/product"
 import { getServices } from "@/app/actions/service"
+import { getContasFinanceiras } from "@/app/actions/conta-financeira"
+import { getMaquinasCartao } from "@/app/actions/maquina-cartao"
+import { METODO_LABELS } from "@/lib/payment-constants"
 
 // Types
 type CustomerOption = { id: string; name: string; document: string | null; email?: string | null; phone?: string | null }
 type SupplierOption = { id: string; name: string }
 type ProductOption = { id: string; name: string; price: number; stockQuantity: number; manageStock: boolean; sku: string | null }
 type ServiceOption = { id: string; name: string; price: number; category: string | null; duration: number | null }
+type ContaOption = { id: string; name: string; type: string; isDefault: boolean }
+type MaquinaOption = { id: string; name: string; diasRecebimento: number; modoRecebimento: string; taxas: { metodoPagamento: string; taxa: number | string }[] }
 
 type CartItem = {
     itemId: string           // unique ID: productId or serviceId
@@ -156,9 +161,12 @@ export function SaleForm({
     const [freightPaidBy, setFreightPaidBy] = useState<"CLIENTE" | "EMPRESA">("CLIENTE")
     const [cart, setCart] = useState<CartItem[]>([])
 
-    // Pagamento
-    const [paymentMethod, setPaymentMethod] = useState<string | null>(null)
-    const [installments, setInstallments] = useState<number>(2)
+    // Pagamento múltiplo
+    type PaymentUI = { id: string; method: string; amount: number; installments: number }
+    const [payments, setPayments] = useState<PaymentUI[]>([])
+    const [addingMethod, setAddingMethod] = useState<string | null>(null)
+    const [addingAmount, setAddingAmount] = useState<string>("")
+    const [addingInstallments, setAddingInstallments] = useState<number>(1)
 
     // Search & UI state
     const [productSearch, setProductSearch] = useState("")
@@ -166,6 +174,12 @@ export function SaleForm({
     const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false)
     const [showFreight, setShowFreight] = useState(false)
     const searchInputRef = useRef<HTMLInputElement>(null)
+
+    // Financial
+    const [contasFinanceiras, setContasFinanceiras] = useState<ContaOption[]>([])
+    const [maquinas, setMaquinas] = useState<MaquinaOption[]>([])
+    const [contaFinanceiraId, setContaFinanceiraId] = useState<string | null>(null)
+    const [maquinaCartaoId, setMaquinaCartaoId] = useState<string | null>(null)
 
     // New customer dialog
     const [newCustomerOpen, setNewCustomerOpen] = useState(false)
@@ -178,11 +192,13 @@ export function SaleForm({
     // Load data
     useEffect(() => {
         const loadData = async () => {
-            const [customersData, suppliersData, productsData, servicesData] = await Promise.all([
+            const [customersData, suppliersData, productsData, servicesData, contasData, maquinasData] = await Promise.all([
                 getCustomers({ pageSize: 1000 }),
                 getSuppliers({ pageSize: 1000 }),
                 getProducts({ pageSize: 1000 }),
-                getServices()
+                getServices(),
+                getContasFinanceiras(),
+                getMaquinasCartao(),
             ])
             setCustomers(customersData.customers)
             setCarriers(suppliersData.suppliers)
@@ -198,6 +214,19 @@ export function SaleForm({
                         duration: s.duration,
                     }))
             )
+            // Contas financeiras
+            const contas = (contasData as any[]).map((c: any) => ({ id: c.id, name: c.name, type: c.type, isDefault: c.isDefault }))
+            setContasFinanceiras(contas)
+            const defaultConta = contas.find((c: ContaOption) => c.isDefault)
+            if (defaultConta) setContaFinanceiraId(defaultConta.id)
+            // Maquininhas
+            setMaquinas((maquinasData as any[]).map((m: any) => ({
+                id: m.id,
+                name: m.name,
+                diasRecebimento: m.diasRecebimento,
+                modoRecebimento: m.modoRecebimento || "PARCELADO",
+                taxas: m.taxas?.map((t: any) => ({ metodoPagamento: t.metodoPagamento, taxa: Number(t.taxa) })) || [],
+            })))
         }
         loadData()
     }, [])
@@ -304,19 +333,55 @@ export function SaleForm({
         ))
     }
 
+    // ── Cálculos de pagamento ──
+    const totalPaid = useMemo(() => payments.reduce((s, p) => s + p.amount, 0), [payments])
+    const remaining = useMemo(() => {
+        const t = cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0) + (showFreight && freightPaidBy === 'CLIENTE' ? shippingCost : 0)
+        return Math.max(0, t - totalPaid)
+    }, [cart, payments, showFreight, shippingCost, freightPaidBy, totalPaid])
+    const paymentComplete = payments.length > 0 && remaining < 0.01
+
+    function addPayment() {
+        if (!addingMethod) return
+        const amt = parseFloat(addingAmount.replace(/[^\d.,]/g, '').replace(',', '.')) || 0
+        if (amt <= 0) { toast.error('Informe o valor'); return }
+        const total = cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0) + (showFreight && freightPaidBy === 'CLIENTE' ? shippingCost : 0)
+        if (totalPaid + amt > total + 0.01) { toast.error('Valor excede o total da venda'); return }
+        setPayments(prev => [...prev, {
+            id: `${Date.now()}`,
+            method: addingMethod,
+            amount: amt,
+            installments: addingInstallments,
+        }])
+        setAddingMethod(null)
+        setAddingAmount('')
+        setAddingInstallments(1)
+    }
+
+    function removePayment(id: string) {
+        setPayments(prev => prev.filter(p => p.id !== id))
+    }
+
     // Submit
     async function handleSubmit() {
         if (cart.length === 0) {
-            toast.error("Adicione pelo menos um item à venda")
+            toast.error('Adicione pelo menos um item à venda')
+            return
+        }
+        if (!paymentComplete) {
+            toast.error('Selecione a(s) forma(s) de pagamento antes de finalizar')
             return
         }
 
         setIsLoading(true)
         try {
-            // Métodos que suportam parcelamento
-            const installablesMethods = ["CREDITO", "CARNE", "BOLETO"]
-            const isInstallable = paymentMethod && installablesMethods.includes(paymentMethod)
-            const paymentType = isInstallable && installments > 1 ? "PARCELADO" : "A_VISTA"
+            const paymentEntries: PaymentEntry[] = payments.map(p => ({
+                method: p.method,
+                amount: p.amount,
+                installments: p.installments,
+                maquinaCartaoId: maquinaCartaoId,
+                contaFinanceiraId: contaFinanceiraId,
+            }))
 
             const result = await createSale({
                 date,
@@ -325,10 +390,13 @@ export function SaleForm({
                 shippingCost: showFreight ? shippingCost : 0,
                 shippingStatus: showFreight ? shippingStatus : null,
                 freightPaidBy: showFreight ? freightPaidBy : 'CLIENTE',
-                paymentMethod: paymentMethod || null,
-                paymentType,
-                installments: isInstallable && installments > 1 ? installments : null,
+                paymentMethod: payments[0]?.method || null,
+                paymentType: payments.some(p => p.installments > 1) ? 'PARCELADO' : 'A_VISTA',
+                installments: payments[0]?.installments || null,
                 eventId: sourceEventId || null,
+                contaFinanceiraId,
+                maquinaCartaoId,
+                payments: paymentEntries,
                 items: cart.map(item => ({
                     itemType: item.itemType,
                     productId: item.productId,
@@ -341,12 +409,12 @@ export function SaleForm({
             if (result.error) {
                 toast.error(result.error)
             } else {
-                toast.success("Venda finalizada com sucesso!")
-                router.push("/dashboard/vendas")
+                toast.success('Venda finalizada com sucesso!')
+                router.push('/dashboard/vendas')
                 router.refresh()
             }
         } catch {
-            toast.error("Erro ao processar venda")
+            toast.error('Erro ao processar venda')
         } finally {
             setIsLoading(false)
         }
@@ -921,93 +989,243 @@ export function SaleForm({
                     </div>
                 </div>
 
-                {/* ─── Forma de Pagamento ─── */}
+                {/* ─── Forma de Pagamento (Múltipla) ─── */}
                 {(() => {
                     const METHODS = [
-                        { id: "PIX", label: "PIX", icon: "⚡", color: "emerald", installable: false },
-                        { id: "DINHEIRO", label: "Dinheiro", icon: "💵", color: "green", installable: false },
-                        { id: "CREDITO", label: "Crédito", icon: "💳", color: "blue", installable: true },
-                        { id: "DEBITO", label: "Débito", icon: "🏦", color: "indigo", installable: false },
-                        { id: "VOUCHER", label: "Voucher", icon: "🎟️", color: "purple", installable: false },
-                        { id: "CHEQUE", label: "Cheque", icon: "📝", color: "amber", installable: true },
-                        { id: "CARNE", label: "Carnê", icon: "📋", color: "orange", installable: true },
-                        { id: "BOLETO", label: "Boleto", icon: "🧾", color: "slate", installable: true },
+                        { id: "PIX", label: "PIX", icon: "⚡", installable: false },
+                        { id: "DINHEIRO", label: "Dinheiro", icon: "💵", installable: false },
+                        { id: "CREDITO", label: "Crédito", icon: "💳", installable: true },
+                        { id: "DEBITO", label: "Débito", icon: "🏦", installable: false },
+                        { id: "VOUCHER", label: "Voucher", icon: "🎟️", installable: false },
+                        { id: "CHEQUE", label: "Cheque", icon: "📝", installable: true },
+                        { id: "CARNE", label: "Carnê", icon: "📋", installable: true },
+                        { id: "BOLETO", label: "Boleto", icon: "🧾", installable: true },
                     ]
-                    const selected = METHODS.find(m => m.id === paymentMethod)
-                    const installable = selected?.installable ?? false
+                    const selectedM = METHODS.find(m => m.id === addingMethod)
+                    const installable = selectedM?.installable ?? false
+                    const autoFillRemaining = () => {
+                        const r = remaining
+                        if (r > 0) setAddingAmount(r.toFixed(2).replace('.', ','))
+                    }
 
                     return (
-                        <div className="rounded-2xl border bg-card p-4">
-                            <div className="flex items-center gap-2 mb-3">
+                        <div className="rounded-2xl border bg-card p-4 space-y-3">
+                            <div className="flex items-center gap-2">
                                 <CreditCard className="h-4 w-4 text-primary" />
                                 <Label className="text-sm font-semibold">Forma de Pagamento</Label>
-                                {paymentMethod && (
-                                    <Badge variant="secondary" className="ml-auto text-xs">
-                                        {selected?.label}
-                                        {installable && installments > 1 ? ` ${installments}x` : " à vista"}
-                                    </Badge>
+                                {paymentComplete && (
+                                    <Badge className="ml-auto bg-emerald-500 text-white text-[10px]">✓ Completo</Badge>
                                 )}
                             </div>
 
-                            {/* Grade de botões */}
-                            <div className="grid grid-cols-4 gap-2">
-                                {METHODS.map((m) => {
-                                    const isActive = paymentMethod === m.id
-                                    return (
-                                        <button
-                                            key={m.id}
-                                            type="button"
-                                            onClick={() => setPaymentMethod(isActive ? null : m.id)}
-                                            className={cn(
-                                                "flex flex-col items-center justify-center gap-1 rounded-xl border py-2.5 px-1 text-xs font-semibold transition-all duration-150 select-none",
-                                                isActive
-                                                    ? "border-primary bg-primary/10 text-primary shadow-sm scale-[0.97]"
-                                                    : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:bg-muted/40 hover:text-foreground"
-                                            )}
-                                        >
-                                            <span className="text-base leading-none">{m.icon}</span>
-                                            <span className="leading-none truncate w-full text-center">{m.label}</span>
-                                        </button>
-                                    )
-                                })}
-                            </div>
-
-                            {/* Parcelas — aparece só para métodos parceláveis */}
-                            {installable && (
-                                <div className="mt-3 pt-3 border-t">
-                                    <Label className="text-xs text-muted-foreground mb-2 block">
-                                        Número de Parcelas
-                                    </Label>
-                                    <div className="flex gap-2 flex-wrap">
-                                        {[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => (
-                                            <button
-                                                key={n}
-                                                type="button"
-                                                onClick={() => setInstallments(n)}
-                                                className={cn(
-                                                    "flex items-center justify-center rounded-lg border w-10 h-9 text-sm font-semibold transition-all",
-                                                    installments === n
-                                                        ? "border-primary bg-primary/10 text-primary"
-                                                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                            {/* Pagamentos adicionados */}
+                            {payments.length > 0 && (
+                                <div className="space-y-1.5">
+                                    {payments.map((p) => {
+                                        const mInfo = METHODS.find(m => m.id === p.method)
+                                        return (
+                                            <div key={p.id} className="flex items-center gap-2 rounded-xl bg-primary/5 border border-primary/20 px-3 py-2 text-sm">
+                                                <span>{mInfo?.icon}</span>
+                                                <span className="font-medium">{mInfo?.label}</span>
+                                                {p.installments > 1 && <span className="text-xs text-muted-foreground">{p.installments}x</span>}
+                                                <span className="ml-auto font-bold text-primary">{formatBRL(p.amount)}</span>
+                                                {p.installments > 1 && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        ({p.installments}x {formatBRL(p.amount / p.installments)})
+                                                    </span>
                                                 )}
-                                            >
-                                                {n === 1 ? "1x" : `${n}x`}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    {installments > 1 && (
-                                        <p className="text-xs text-muted-foreground mt-2">
-                                            {installments}x de{" "}
-                                            <strong className="text-foreground">
-                                                {formatBRL((cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0) + (showFreight && freightPaidBy === "CLIENTE" ? shippingCost : 0)) / installments)}
-                                            </strong>
-                                        </p>
-                                    )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removePayment(p.id)}
+                                                    className="text-muted-foreground hover:text-red-500 transition-colors ml-1"
+                                                    title="Remover"
+                                                >
+                                                    <X className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        )
+                                    })}
                                 </div>
+                            )}
+
+                            {/* Indicador restante */}
+                            {!paymentComplete && cart.length > 0 && (
+                                <div className="text-sm">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-muted-foreground">Falta pagar:</span>
+                                        <span className="font-bold text-amber-600">{formatBRL(remaining)}</span>
+                                    </div>
+                                    <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                                            style={{ width: `${Math.min(100, total > 0 ? (totalPaid / total) * 100 : 0)}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Adicionar nova forma — só se incompleto */}
+                            {!paymentComplete && (
+                                <>
+                                    {/* Grade de botões */}
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {METHODS.map((m) => {
+                                            const isActive = addingMethod === m.id
+                                            return (
+                                                <button
+                                                    key={m.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setAddingMethod(isActive ? null : m.id)
+                                                        setAddingInstallments(1)
+                                                        // Auto-fill remaining amount
+                                                        if (!isActive && remaining > 0) {
+                                                            setAddingAmount(remaining.toFixed(2).replace('.', ','))
+                                                        }
+                                                    }}
+                                                    className={cn(
+                                                        "flex flex-col items-center justify-center gap-1 rounded-xl border py-2.5 px-1 text-xs font-semibold transition-all duration-150 select-none",
+                                                        isActive
+                                                            ? "border-primary bg-primary/10 text-primary shadow-sm scale-[0.97]"
+                                                            : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:bg-muted/40 hover:text-foreground"
+                                                    )}
+                                                >
+                                                    <span className="text-base leading-none">{m.icon}</span>
+                                                    <span className="leading-none truncate w-full text-center">{m.label}</span>
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+
+                                    {/* Valor + Parcelas + Botão confirmar */}
+                                    {addingMethod && (
+                                        <div className="mt-3 pt-3 border-t space-y-3">
+                                            <div className="flex gap-2">
+                                                <div className="flex-1">
+                                                    <Label className="text-xs text-muted-foreground mb-1 block">Valor ({selectedM?.label})</Label>
+                                                    <CurrencyInput
+                                                        className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-semibold"
+                                                        placeholder="R$ 0,00"
+                                                        decimalsLimit={2}
+                                                        decimalSeparator=","
+                                                        groupSeparator="."
+                                                        prefix="R$ "
+                                                        value={addingAmount}
+                                                        onValueChange={(val) => setAddingAmount(val || "")}
+                                                    />
+                                                </div>
+                                                <div className="flex items-end">
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="text-xs h-10 rounded-xl"
+                                                        onClick={autoFillRemaining}
+                                                    >
+                                                        Resto
+                                                    </Button>
+                                                </div>
+                                            </div>
+
+                                            {/* Parcelas */}
+                                            {installable && (
+                                                <div>
+                                                    <Label className="text-xs text-muted-foreground mb-2 block">Parcelas</Label>
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        {[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => (
+                                                            <button
+                                                                key={n}
+                                                                type="button"
+                                                                onClick={() => setAddingInstallments(n)}
+                                                                className={cn(
+                                                                    "flex items-center justify-center rounded-lg border w-10 h-9 text-sm font-semibold transition-all",
+                                                                    addingInstallments === n
+                                                                        ? "border-primary bg-primary/10 text-primary"
+                                                                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                                                                )}
+                                                            >
+                                                                {n}x
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {addingInstallments > 1 && parseFloat(addingAmount.replace(',', '.') || '0') > 0 && (
+                                                        <p className="text-xs text-muted-foreground mt-2">
+                                                            {addingInstallments}x de{" "}
+                                                            <strong className="text-foreground">
+                                                                {formatBRL(parseFloat(addingAmount.replace(',', '.')) / addingInstallments)}
+                                                            </strong>
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <Button
+                                                type="button"
+                                                onClick={addPayment}
+                                                className="w-full rounded-xl"
+                                                size="sm"
+                                            >
+                                                <Plus className="h-4 w-4 mr-2" />
+                                                Adicionar {selectedM?.label} — {addingAmount ? `R$ ${addingAmount}` : ""}
+                                            </Button>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     )
                 })()}
+
+                {/* ─── Conta Financeira + Maquininha ─── */}
+                <div className="rounded-2xl border bg-card p-4 space-y-3">
+                    <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-sm">🏦</span>
+                            <Label className="text-sm font-semibold">Conta Financeira</Label>
+                        </div>
+                        <Select
+                            value={contaFinanceiraId || ""}
+                            onValueChange={(v) => setContaFinanceiraId(v || null)}
+                        >
+                            <SelectTrigger className="rounded-xl">
+                                <SelectValue placeholder="Selecione uma conta" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {contasFinanceiras.map(c => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                        {c.name} {c.isDefault ? "⭐" : ""}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Maquininha — mostra se algum pagamento usa cartão/PIX */}
+                    {payments.some(p => ["CREDITO", "DEBITO", "PIX", "VOUCHER"].includes(p.method)) && (
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <CreditCard className="h-4 w-4 text-violet-500" />
+                                <Label className="text-sm font-semibold">Maquininha</Label>
+                            </div>
+                            <Select
+                                value={maquinaCartaoId || "none"}
+                                onValueChange={(v) => setMaquinaCartaoId(v === "none" ? null : v)}
+                            >
+                                <SelectTrigger className="rounded-xl">
+                                    <SelectValue placeholder="Sem maquininha" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Sem maquininha</SelectItem>
+                                    {maquinas.map(m => (
+                                        <SelectItem key={m.id} value={m.id}>
+                                            {m.name} (D+{m.diasRecebimento})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+                </div>
 
                 {/* ═══════════ Totals & Checkout ═══════════ */}
                 <div className="rounded-2xl border bg-card p-5 mt-auto">
@@ -1034,6 +1252,12 @@ export function SaleForm({
                                 <span className="font-medium">{formatBRL(shippingCost)}</span>
                             </div>
                         )}
+                        {payments.length > 0 && (
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-muted-foreground">Pago ({payments.length} forma{payments.length > 1 ? "s" : ""})</span>
+                                <span className="font-medium text-emerald-600">{formatBRL(totalPaid)}</span>
+                            </div>
+                        )}
                         <Separator className="my-3" />
                         <div className="flex justify-between items-center">
                             <span className="text-base font-bold">Total</span>
@@ -1045,9 +1269,14 @@ export function SaleForm({
 
                     <Button
                         type="button"
-                        className="w-full h-14 mt-5 rounded-2xl text-base font-bold gradient-primary hover:opacity-90 text-white shadow-lg shadow-primary/25 transition-all duration-200 hover:shadow-primary/40"
+                        className={cn(
+                            "w-full h-14 mt-5 rounded-2xl text-base font-bold transition-all duration-200 shadow-lg",
+                            paymentComplete
+                                ? "gradient-primary hover:opacity-90 text-white shadow-primary/25 hover:shadow-primary/40"
+                                : "bg-muted text-muted-foreground cursor-not-allowed shadow-none"
+                        )}
                         size="lg"
-                        disabled={isLoading || cart.length === 0}
+                        disabled={isLoading || cart.length === 0 || !paymentComplete}
                         onClick={handleSubmit}
                     >
                         {isLoading ? (
@@ -1058,7 +1287,7 @@ export function SaleForm({
                         ) : (
                             <div className="flex items-center gap-2">
                                 <CheckCircle2 className="h-5 w-5" />
-                                Finalizar Venda
+                                {paymentComplete ? "Finalizar Venda" : "Selecione o pagamento"}
                                 <Badge variant="secondary" className="ml-1 text-[10px] font-mono bg-white/20 text-white border-0">
                                     F12
                                 </Badge>
@@ -1070,6 +1299,12 @@ export function SaleForm({
                         <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground justify-center">
                             <AlertCircle className="h-3 w-3" />
                             Adicione itens para finalizar
+                        </div>
+                    )}
+                    {cart.length > 0 && !paymentComplete && (
+                        <div className="flex items-center gap-2 mt-3 text-xs text-amber-600 justify-center">
+                            <AlertCircle className="h-3 w-3" />
+                            Selecione a forma de pagamento
                         </div>
                     )}
                 </div>

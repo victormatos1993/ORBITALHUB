@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { auth } from "@/auth"
+import { WhatsNewPopup } from "@/components/whats-new-popup"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
     const session = await auth()
@@ -20,6 +21,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 <main className="flex flex-1 flex-col gap-6 p-5 lg:p-8 overflow-auto">
                     {children}
                 </main>
+                <WhatsNewPopup />
             </div>
         </div>
     )

@@ -59,8 +59,12 @@ export const navigationRoutes: NavRoute[] = [
         roles: ["ADMINISTRADOR", "GERENTE", "FINANCEIRO", "VISUALIZADOR"],
         items: [
             { name: "Resumo", href: "/dashboard/financeiro" },
+            { name: "Contas a Pagar", href: "/dashboard/financeiro/contas-pagar" },
+            { name: "Contas a Receber", href: "/dashboard/financeiro/contas-receber" },
             { name: "Transações", href: "/dashboard/financeiro/transacoes" },
-            { name: "Categorias", href: "/dashboard/financeiro/categorias" },
+            { name: "Contas Bancárias", href: "/dashboard/financeiro/contas" },
+            { name: "Maquininhas", href: "/dashboard/financeiro/maquininhas" },
+            { name: "Plano de Contas", href: "/dashboard/financeiro/categorias" },
         ],
     },
     {

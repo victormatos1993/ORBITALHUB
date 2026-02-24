@@ -99,24 +99,39 @@ export async function getAgendaEvents() {
             orderBy: { startDate: "asc" }
         })
 
-        return events.map((e: any) => ({
-            id: e.id,
-            title: e.title,
-            start: e.startDate,
-            end: e.endDate,
-            type: e.type,
-            isLocal: e.isLocal,
-            location: e.location,
-            customerName: e.customerName || e.customer?.name || null,
-            customerId: e.customerId,
-            customerEmail: e.customer?.email || null,
-            customerPhone: e.customer?.phone || null,
-            productId: e.productId,
-            serviceId: e.serviceId,
-            quoteId: e.quoteId,
-            paymentStatus: e.paymentStatus || null,
-            attendanceStatus: e.attendanceStatus || "SCHEDULED",
-        }))
+        return events.map((e: any) => {
+            let estimatedValue = 0
+            if (e.quote && e.quote.status === "APPROVED") {
+                estimatedValue = Number(e.quote.totalAmount || 0)
+            } else {
+                if (e.service) estimatedValue += Number(e.service.price || 0)
+                if (e.product) estimatedValue += Number(e.product.price || 0)
+            }
+
+            return {
+                id: e.id,
+                title: e.title,
+                start: e.startDate,
+                end: e.endDate,
+                type: e.type,
+                isLocal: e.isLocal,
+                location: e.location,
+                customerName: e.customerName || e.customer?.name || null,
+                customerId: e.customerId,
+                customerEmail: e.customer?.email || null,
+                customerPhone: e.customer?.phone || null,
+                productId: e.productId,
+                serviceId: e.serviceId,
+                quoteId: e.quoteId,
+                paymentStatus: e.paymentStatus || null,
+                attendanceStatus: e.attendanceStatus || "SCHEDULED",
+                serviceName: e.service?.name || null,
+                servicePrice: e.service ? Number(e.service.price || 0) : null,
+                productName: e.product?.name || null,
+                productPrice: e.product ? Number(e.product.price || 0) : null,
+                estimatedValue,
+            }
+        })
     } catch (error) {
         console.error("Error fetching agenda events:", error)
         return []
@@ -137,6 +152,8 @@ export async function createAgendaEvent(data: {
     productId?: string | null
     serviceId?: string | null
     quoteId?: string | null
+    recurrenceRule?: string | null
+    recurrenceCount?: number | null
 }) {
     const { userId, tenantId } = await getTenantInfo()
     if (!tenantId) return { success: false, error: "Unauthorized" }
@@ -194,83 +211,118 @@ export async function createAgendaEvent(data: {
             }
         }
 
-        const newEvent = await prisma.agendaEvent.create({
-            data: {
-                title: data.title,
-                type: data.type,
-                startDate: new Date(data.startDate),
-                endDate: new Date(data.endDate),
-                isLocal: data.isLocal,
-                location: data.location,
-                customerName: data.customerName,
-                userId: tenantId,
-                createdById: userId,
-                attendanceStatus: "SCHEDULED",
-                ...(finalCustomerId ? { customerId: finalCustomerId } : {}),
-                ...(data.productId ? { productId: data.productId } : {}),
-                ...(data.serviceId ? { serviceId: data.serviceId } : {}),
-                ...(data.quoteId ? { quoteId: data.quoteId } : {}),
-            }
-        })
+        // ── Recurrence: build array of date offsets ──
+        const occurrences: { start: Date; end: Date }[] = []
+        const rule = data.recurrenceRule
+        const count = data.recurrenceCount && data.recurrenceCount > 1 ? data.recurrenceCount : 1
+        const baseStart = new Date(data.startDate)
+        const baseEnd = new Date(data.endDate)
+        const durationMs = baseEnd.getTime() - baseStart.getTime()
 
-        try {
-            let amount = 0
-            let description = `Agendamento: ${data.title}`
+        for (let i = 0; i < count; i++) {
+            const start = new Date(baseStart)
+            if (rule === "WEEKLY") start.setDate(start.getDate() + 7 * i)
+            else if (rule === "BIWEEKLY") start.setDate(start.getDate() + 14 * i)
+            else if (rule === "MONTHLY") start.setMonth(start.getMonth() + i)
+            // else: single event (i=0, no offset)
 
-            if (data.quoteId) {
-                const q = await prisma.quote.findFirst({ where: { id: data.quoteId, userId: tenantId } })
-                if (q && q.status === "APPROVED") {
-                    amount = Number(q.totalAmount)
-                    description = `Serviço/Venda Orçada: ${data.title} (#${q.id.slice(-4).toUpperCase()})`
+            const end = new Date(start.getTime() + durationMs)
+            occurrences.push({ start, end })
+        }
+
+        const recurrenceGroupId = count > 1 ? crypto.randomUUID() : null
+
+        // ── Create all occurrences ──
+        const createdEvents: any[] = []
+        for (const occ of occurrences) {
+            const newEvent = await prisma.agendaEvent.create({
+                data: {
+                    title: data.title,
+                    type: data.type,
+                    startDate: occ.start,
+                    endDate: occ.end,
+                    isLocal: data.isLocal,
+                    location: data.location,
+                    customerName: data.customerName,
+                    userId: tenantId,
+                    createdById: userId,
+                    attendanceStatus: "SCHEDULED",
+                    ...(recurrenceGroupId ? {
+                        recurrenceRule: rule,
+                        recurrenceCount: count,
+                        recurrenceGroupId,
+                    } : {}),
+                    ...(finalCustomerId ? { customerId: finalCustomerId } : {}),
+                    ...(data.productId ? { productId: data.productId } : {}),
+                    ...(data.serviceId ? { serviceId: data.serviceId } : {}),
+                    ...(data.quoteId ? { quoteId: data.quoteId } : {}),
                 }
-            }
+            })
+            createdEvents.push(newEvent)
 
-            if (amount === 0) {
-                if (data.serviceId) {
-                    const s = await prisma.service.findFirst({ where: { id: data.serviceId, userId: tenantId } })
-                    if (s) {
-                        amount += Number(s.price)
-                        description = `Serviço Agendado: ${s.name}`
+            // ── Financial transaction for each occurrence ──
+            try {
+                let amount = 0
+                let description = `Agendamento: ${data.title}`
+
+                if (data.quoteId) {
+                    const q = await prisma.quote.findFirst({ where: { id: data.quoteId, userId: tenantId } })
+                    if (q && q.status === "APPROVED") {
+                        amount = Number(q.totalAmount)
+                        description = `Serviço/Venda Orçada: ${data.title} (#${q.id.slice(-4).toUpperCase()})`
                     }
                 }
-                if (data.productId) {
-                    const p = await prisma.product.findFirst({ where: { id: data.productId, userId: tenantId } })
-                    if (p) {
-                        amount += Number(p.price)
-                        if (!data.serviceId) description = `Venda Agendada: ${p.name}`
-                        else description += ` + ${p.name}`
+
+                if (amount === 0) {
+                    if (data.serviceId) {
+                        const s = await prisma.service.findFirst({ where: { id: data.serviceId, userId: tenantId } })
+                        if (s) {
+                            amount += Number(s.price)
+                            description = `Serviço Agendado: ${s.name}`
+                        }
+                    }
+                    if (data.productId) {
+                        const p = await prisma.product.findFirst({ where: { id: data.productId, userId: tenantId } })
+                        if (p) {
+                            amount += Number(p.price)
+                            if (!data.serviceId) description = `Venda Agendada: ${p.name}`
+                            else description += ` + ${p.name}`
+                        }
                     }
                 }
-            }
 
-            if (amount > 0) {
-                await prisma.transaction.create({
-                    data: {
-                        description,
-                        amount,
-                        type: "income",
-                        status: "pending",
-                        date: new Date(data.startDate),
-                        userId: tenantId,
-                        createdById: userId,
-                        customerId: finalCustomerId || null,
-                        eventId: newEvent.id,
-                        quoteId: data.quoteId || null,
-                    }
-                })
-                // Evento tem valor financeiro → marca como pendente
-                await prisma.agendaEvent.update({
-                    where: { id: newEvent.id },
-                    data: { paymentStatus: "PENDING" }
-                })
+                if (amount > 0) {
+                    await prisma.transaction.create({
+                        data: {
+                            description,
+                            amount,
+                            type: "income",
+                            status: "pending",
+                            date: occ.start,
+                            userId: tenantId,
+                            createdById: userId,
+                            customerId: finalCustomerId || null,
+                            eventId: newEvent.id,
+                            quoteId: data.quoteId || null,
+                        }
+                    })
+                    await prisma.agendaEvent.update({
+                        where: { id: newEvent.id },
+                        data: { paymentStatus: "PENDING" }
+                    })
+                }
+            } catch (error) {
+                console.error("Erro ao criar transação automática para agendamento:", error)
             }
-        } catch (error) {
-            console.error("Erro ao criar transação automática para agendamento:", error)
         }
 
         revalidatePath("/dashboard/agenda")
         revalidatePath("/dashboard/financeiro")
-        return { success: true, event: newEvent }
+        return {
+            success: true,
+            event: createdEvents[0],
+            totalCreated: createdEvents.length,
+        }
     } catch (error) {
         console.error("Error creating agenda event:", error)
         return { success: false, error: "Failed to create event" }

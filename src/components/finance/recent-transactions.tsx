@@ -11,7 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Plus, Trash2, Pencil } from "lucide-react"
+import { Trash2, Eye, Pencil } from "lucide-react"
 import Link from "next/link"
 import { deleteTransaction } from "@/app/actions/transaction"
 import { toast } from "sonner"
@@ -24,6 +24,7 @@ interface Transaction {
     status: string
     date: string
     type: string
+    saleId?: string | null
 }
 
 interface RecentTransactionsProps {
@@ -42,7 +43,6 @@ export function RecentTransactions({ data, className }: RecentTransactionsProps)
     }
 
     const formatDate = (dateStr: string) => {
-        // data comes as YYYY-MM-DD from action
         if (!dateStr) return "-";
         const [year, month, day] = dateStr.split('-');
         return `${day}/${month}/${year}`;
@@ -62,16 +62,11 @@ export function RecentTransactions({ data, className }: RecentTransactionsProps)
 
     return (
         <Card className={className}>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader>
                 <div className="space-y-1">
                     <CardTitle className="text-xl">Transações Recentes</CardTitle>
                     <CardDescription>Últimas movimentações financeiras.</CardDescription>
                 </div>
-                <Button size="sm" asChild>
-                    <Link href="/dashboard/financeiro/transacoes/novo">
-                        <Plus className="mr-2 h-4 w-4" /> Nova
-                    </Link>
-                </Button>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -90,41 +85,58 @@ export function RecentTransactions({ data, className }: RecentTransactionsProps)
                                 <TableCell colSpan={5} className="text-center">Nenhuma transação encontrada.</TableCell>
                             </TableRow>
                         ) : (
-                            data.map((transaction) => (
-                                <TableRow key={transaction.id}>
-                                    <TableCell>
-                                        <div className="font-medium">{transaction.description}</div>
-                                    </TableCell>
-                                    <TableCell className={`text-right font-medium ${transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                        {transaction.type === 'expense' ? '-' : '+'}{formatCurrency(transaction.amount)}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <Badge variant={transaction.status === 'paid' ? 'default' : 'secondary'}>
-                                            {transaction.status === 'paid' ? 'Pago' : 'Pendente'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        {formatDate(transaction.date)}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" asChild>
-                                                <Link href={`/dashboard/financeiro/transacoes/${transaction.id}`}>
-                                                    <Pencil className="h-4 w-4" />
-                                                </Link>
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-muted-foreground hover:text-red-600"
-                                                onClick={() => handleDelete(transaction.id)}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            )))}
+                            data.map((transaction) => {
+                                // Se a transação veio de uma venda, linka ao cupom fiscal
+                                const detailHref = transaction.saleId
+                                    ? `/dashboard/vendas/${transaction.saleId}`
+                                    : `/dashboard/financeiro/transacoes/${transaction.id}`
+
+                                return (
+                                    <TableRow
+                                        key={transaction.id}
+                                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                                        onClick={() => router.push(detailHref)}
+                                    >
+                                        <TableCell>
+                                            <div className="font-medium">{transaction.description}</div>
+                                        </TableCell>
+                                        <TableCell className={`text-right font-medium ${transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                            {transaction.type === 'expense' ? '-' : '+'}{formatCurrency(transaction.amount)}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Badge variant={transaction.status === 'paid' ? 'default' : 'secondary'}>
+                                                {transaction.status === 'paid' ? 'Pago' : 'Pendente'}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            {formatDate(transaction.date)}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" asChild>
+                                                    <Link href={detailHref}>
+                                                        {transaction.saleId ? (
+                                                            <Eye className="h-4 w-4" />
+                                                        ) : (
+                                                            <Pencil className="h-4 w-4" />
+                                                        )}
+                                                    </Link>
+                                                </Button>
+                                                {!transaction.saleId && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                                                        onClick={() => handleDelete(transaction.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                )
+                            }))}
                     </TableBody>
                 </Table>
             </CardContent>

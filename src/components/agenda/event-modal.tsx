@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarIcon, MapPin, Users, Check, ChevronsUpDown, Package, FileText, Wrench, Plus, CirclePlus, Link as LinkIcon, UserPlus, Clock, Trash2 } from "lucide-react"
+import { CalendarIcon, MapPin, Users, Check, ChevronsUpDown, Package, FileText, Wrench, Plus, CirclePlus, Link as LinkIcon, UserPlus, Clock, Trash2, Repeat } from "lucide-react"
 import { QuickCustomerDialog } from "@/components/customers/quick-customer-dialog"
 import { createCustomer } from "@/app/actions/customer"
 import { toast } from "sonner"
@@ -156,13 +156,15 @@ export function EventModal({
     const [tipoSearch, setTipoSearch] = useState("")
     const [clienteId, setClienteId] = useState(initialCustomerId || "")
 
-    // Datas
-    const [dataInicio, setDataInicio] = useState(
-        initialStart ? format(initialStart, "dd/MM/yyyy HH:mm") : format(new Date(), "dd/MM/yyyy HH:mm")
-    )
-    const [dataFim, setDataFim] = useState(
-        initialEnd ? format(initialEnd, "dd/MM/yyyy HH:mm") : format(new Date(Date.now() + 3600000), "dd/MM/yyyy HH:mm")
-    )
+    // Datas — separadas em data, hora, minuto
+    const initStart = initialStart || new Date()
+    const initEnd = initialEnd || new Date(Date.now() + 3600000)
+    const [startDateObj, setStartDateObj] = useState<Date>(initStart)
+    const [startHour, setStartHour] = useState(String(initStart.getHours()).padStart(2, "0"))
+    const [startMin, setStartMin] = useState(String(Math.floor(initStart.getMinutes() / 5) * 5).padStart(2, "0"))
+    const [endDateObj, setEndDateObj] = useState<Date>(initEnd)
+    const [endHour, setEndHour] = useState(String(initEnd.getHours()).padStart(2, "0"))
+    const [endMin, setEndMin] = useState(String(Math.floor(initEnd.getMinutes() / 5) * 5).padStart(2, "0"))
     const [calendarOpenInicio, setCalendarOpenInicio] = useState(false)
     const [calendarOpenFim, setCalendarOpenFim] = useState(false)
 
@@ -195,88 +197,68 @@ export function EventModal({
     const [quoteOpen, setQuoteOpen] = useState(false)
     const [quoteId, setQuoteId] = useState(initialQuoteId || "")
 
+    // Recorrência (apenas para novo evento)
+    const isEditing = !!initialTitle
+    const [enableRecurrence, setEnableRecurrence] = useState(false)
+    const [recurrenceRule, setRecurrenceRule] = useState("WEEKLY")
+    const [recurrenceCount, setRecurrenceCount] = useState(4)
+
     useEffect(() => {
         setTiposCustomizados(Array.from(new Set([...TIPOS_DE_EVENTO_MOCK, ...eventTypes])))
     }, [eventTypes])
 
-    // Helper para extrair só a data do texto e alimentar o calendário
-
-    const parseCalendarDate = (dateStr: string) => {
-        if (!dateStr || dateStr.includes("_")) return new Date()
-        const [day, month, year] = dateStr.split(" ")[0].split("/")
-        if (!day || !month || !year || year.length < 4) return new Date()
-        const d = new Date(Number(year), Number(month) - 1, Number(day))
-        return isNaN(d.getTime()) ? new Date() : d
+    // ── Helpers para montar Date a partir dos states separados ──
+    const buildDate = (dateObj: Date, hour: string, min: string): Date => {
+        const d = new Date(dateObj)
+        d.setHours(parseInt(hour), parseInt(min), 0, 0)
+        return d
     }
 
-    // Conversão de DD/MM/YYYY HH:mm para Date
-    const parseDateString = (str: string) => {
-        if (!str || str.length < 16) return null;
-        const [datePart, timePart] = str.split(" ")
-        if (!datePart || !timePart) return null;
-        const [day, month, year] = datePart.split("/")
-        const [hour, minute] = timePart.split(":")
-        const d = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute))
-        return isNaN(d.getTime()) ? null : d;
+    const getStartDate = () => buildDate(startDateObj, startHour, startMin)
+    const getEndDate = () => buildDate(endDateObj, endHour, endMin)
+
+    // Quando o início muda, atualiza o fim mantendo a duração
+    const syncEndFromStart = (newStart: Date) => {
+        const oldStart = getStartDate()
+        const oldEnd = getEndDate()
+        let diff = oldEnd.getTime() - oldStart.getTime()
+        if (diff < 0) diff = 3600000
+        const newEnd = new Date(newStart.getTime() + diff)
+        setEndDateObj(newEnd)
+        setEndHour(String(newEnd.getHours()).padStart(2, "0"))
+        setEndMin(String(Math.floor(newEnd.getMinutes() / 5) * 5).padStart(2, "0"))
     }
 
-    const handleDataInicioChange = (newVal: string) => {
-        const prevStart = parseDateString(dataInicio)
-        const prevEnd = parseDateString(dataFim)
-        setDataInicio(newVal)
-
-        if (newVal.length === 16) {
-            const newStart = parseDateString(newVal)
-            if (newStart) {
-                let diffTime = 3600000; // default 1h
-                if (prevStart && prevEnd) {
-                    diffTime = prevEnd.getTime() - prevStart.getTime();
-                    if (diffTime < 0) diffTime = 3600000;
-                }
-                const newEndD = new Date(newStart.getTime() + diffTime)
-                setDataFim(format(newEndD, "dd/MM/yyyy HH:mm"))
-            }
-        }
-    }
-
-    const handleCalendarSelect = (date: Date | undefined, isStart: boolean) => {
+    const handleStartDateSelect = (date: Date | undefined) => {
         if (!date) return
-        const currentStr = isStart ? dataInicio : dataFim
-        const timeMatch = currentStr.match(/\d{2}:\d{2}$/)
-        const timeToKeep = timeMatch ? timeMatch[0] : "12:00"
-
-        const newStr = `${format(date, "dd/MM/yyyy")} ${timeToKeep}`
-
-        if (isStart) {
-            handleDataInicioChange(newStr)
-            setCalendarOpenInicio(false)
-        } else {
-            setDataFim(newStr)
-            setCalendarOpenFim(false)
-        }
+        setStartDateObj(date)
+        setCalendarOpenInicio(false)
+        const newStart = buildDate(date, startHour, startMin)
+        syncEndFromStart(newStart)
     }
 
-    const applyDateTimeMask = (val: string) => {
-        let v = val.replace(/\D/g, "");
-        let newVal = "";
-        for (let i = 0; i < v.length && i < 12; i++) {
-            newVal += v[i];
-            if (i === 1 || i === 3) newVal += "/";
-            else if (i === 7) newVal += " ";
-            else if (i === 9) newVal += ":";
-        }
-        return newVal;
+    const handleStartHourChange = (h: string) => {
+        setStartHour(h)
+        const newStart = buildDate(startDateObj, h, startMin)
+        syncEndFromStart(newStart)
+    }
+
+    const handleStartMinChange = (m: string) => {
+        setStartMin(m)
+        const newStart = buildDate(startDateObj, startHour, m)
+        syncEndFromStart(newStart)
     }
 
     const setDuration = (minutes: number) => {
-        const startD = parseDateString(dataInicio)
-        if (startD) {
-            const endD = new Date(startD.getTime() + minutes * 60000)
-            setDataFim(format(endD, "dd/MM/yyyy HH:mm"))
-        } else {
-            toast.error("Preencha o horário de início antes de definir a duração.")
-        }
+        const start = getStartDate()
+        const endD = new Date(start.getTime() + minutes * 60000)
+        setEndDateObj(endD)
+        setEndHour(String(endD.getHours()).padStart(2, "0"))
+        setEndMin(String(Math.floor(endD.getMinutes() / 5) * 5).padStart(2, "0"))
     }
+
+    const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"))
+    const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"))
 
     const buscarCEP = async (cepBusca: string) => {
         const cepLimpo = cepBusca.replace(/\D/g, "")
@@ -313,15 +295,10 @@ export function EventModal({
     }
 
     const handleSave = () => {
-        if (!dataInicio || !dataFim || dataInicio.length < 16 || dataFim.length < 16) {
-            toast.error("Data de início e fim incompletas. Preencha todos os campos da data e hora.")
-            return
-        }
+        const startDate = getStartDate()
+        const endDate = getEndDate()
 
-        const startDate = parseDateString(dataInicio)
-        const endDate = parseDateString(dataFim)
-
-        if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
             toast.error("Datas inválidas")
             return
         }
@@ -352,6 +329,8 @@ export function EventModal({
                 serviceId: enableService ? serviceId : null,
                 quoteId: enableQuote ? quoteId : null,
                 customerId: clienteId,
+                recurrenceRule: !isEditing && enableRecurrence ? recurrenceRule : null,
+                recurrenceCount: !isEditing && enableRecurrence ? recurrenceCount : null,
             })
         }
         onOpenChange(false)
@@ -361,8 +340,14 @@ export function EventModal({
     const resetForm = () => {
         setTitulo("")
         setTipoEvento("")
-        setDataInicio(format(new Date(), "dd/MM/yyyy HH:mm"))
-        setDataFim(format(new Date(Date.now() + 3600000), "dd/MM/yyyy HH:mm"))
+        const now = new Date()
+        const later = new Date(Date.now() + 3600000)
+        setStartDateObj(now)
+        setStartHour(String(now.getHours()).padStart(2, "0"))
+        setStartMin(String(Math.floor(now.getMinutes() / 5) * 5).padStart(2, "0"))
+        setEndDateObj(later)
+        setEndHour(String(later.getHours()).padStart(2, "0"))
+        setEndMin(String(Math.floor(later.getMinutes() / 5) * 5).padStart(2, "0"))
         setIsLocal(false)
         setEndereco("")
         setCep("")
@@ -384,6 +369,9 @@ export function EventModal({
         setQuoteId("")
         setClienteSearch("")
         setQuickCustomerOpen(false)
+        setEnableRecurrence(false)
+        setRecurrenceRule("WEEKLY")
+        setRecurrenceCount(4)
     }
 
     const handleQuickCustomerSuccess = (customer: { id: string; name: string; email?: string | null; phone?: string | null }) => {
@@ -572,69 +560,55 @@ export function EventModal({
                             </div>
                         </div>
 
-                        {/* Linha 2: Datas */}
+                        {/* Linha 2: Datas — [Data] [Hora] [Minutos] */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Início</Label>
-                                <div className="flex gap-2">
+                                <div className="flex gap-1.5">
                                     <Popover open={calendarOpenInicio} onOpenChange={setCalendarOpenInicio}>
                                         <PopoverTrigger asChild>
-                                            <Button variant="outline" size="icon" className="shrink-0 bg-muted/30">
-                                                <CalendarIcon className="h-4 w-4" />
+                                            <Button variant="outline" className="flex-1 justify-start gap-2 bg-muted/30 font-normal text-sm h-10">
+                                                <CalendarIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                {format(startDateObj, "dd/MM/yyyy")}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0" align="start">
                                             <Calendar
                                                 mode="single"
-                                                defaultMonth={parseCalendarDate(dataInicio)}
-                                                selected={parseCalendarDate(dataInicio)}
-                                                onSelect={(d) => handleCalendarSelect(d, true)}
+                                                defaultMonth={startDateObj}
+                                                selected={startDateObj}
+                                                onSelect={handleStartDateSelect}
                                                 initialFocus
                                             />
                                         </PopoverContent>
                                     </Popover>
-                                    <Input
-                                        type="text"
-                                        placeholder="DD/MM/AAAA HH:MM"
-                                        maxLength={16}
-                                        value={dataInicio}
-                                        onChange={(e) => handleDataInicioChange(applyDateTimeMask(e.target.value))}
-                                        className="bg-muted/30 font-mono text-sm"
-                                    />
+                                    <Select value={startHour} onValueChange={handleStartHourChange}>
+                                        <SelectTrigger className="w-[80px] bg-muted/30 font-mono text-sm h-10">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[200px]">
+                                            {HOURS.map(h => <SelectItem key={h} value={h}>{h}h</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                    <span className="flex items-center text-muted-foreground font-bold">:</span>
+                                    <Select value={startMin} onValueChange={handleStartMinChange}>
+                                        <SelectTrigger className="w-[80px] bg-muted/30 font-mono text-sm h-10">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[200px]">
+                                            {MINUTES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <Label>Término</Label>
-                                <div className="flex gap-2">
-                                    <Popover open={calendarOpenFim} onOpenChange={setCalendarOpenFim}>
-                                        <PopoverTrigger asChild>
-                                            <Button variant="outline" size="icon" className="shrink-0 bg-muted/30" title="Selecionar Data">
-                                                <CalendarIcon className="h-4 w-4" />
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0" align="start">
-                                            <Calendar
-                                                mode="single"
-                                                defaultMonth={parseCalendarDate(dataFim)}
-                                                selected={parseCalendarDate(dataFim)}
-                                                onSelect={(d) => handleCalendarSelect(d, false)}
-                                                initialFocus
-                                            />
-                                        </PopoverContent>
-                                    </Popover>
-                                    <Input
-                                        type="text"
-                                        placeholder="DD/MM/AAAA HH:MM"
-                                        maxLength={16}
-                                        value={dataFim}
-                                        onChange={(e) => setDataFim(applyDateTimeMask(e.target.value))}
-                                        className="bg-muted/30 font-mono text-sm flex-1"
-                                    />
+                                <div className="flex items-center justify-between">
+                                    <Label>Término</Label>
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                            <Button variant="outline" size="icon" className="shrink-0 bg-muted/30" title="Duração Rápida">
-                                                <Clock className="h-4 w-4" />
-                                            </Button>
+                                            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                                                <Clock className="h-3.5 w-3.5" /> Duração
+                                            </button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" className="w-40">
                                             {[
@@ -653,6 +627,42 @@ export function EventModal({
                                             ))}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
+                                </div>
+                                <div className="flex gap-1.5">
+                                    <Popover open={calendarOpenFim} onOpenChange={setCalendarOpenFim}>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" className="flex-1 justify-start gap-2 bg-muted/30 font-normal text-sm h-10">
+                                                <CalendarIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                {format(endDateObj, "dd/MM/yyyy")}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                            <Calendar
+                                                mode="single"
+                                                defaultMonth={endDateObj}
+                                                selected={endDateObj}
+                                                onSelect={(d) => { if (d) { setEndDateObj(d); setCalendarOpenFim(false) } }}
+                                                initialFocus
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
+                                    <Select value={endHour} onValueChange={setEndHour}>
+                                        <SelectTrigger className="w-[80px] bg-muted/30 font-mono text-sm h-10">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[200px]">
+                                            {HOURS.map(h => <SelectItem key={h} value={h}>{h}h</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                    <span className="flex items-center text-muted-foreground font-bold">:</span>
+                                    <Select value={endMin} onValueChange={setEndMin}>
+                                        <SelectTrigger className="w-[80px] bg-muted/30 font-mono text-sm h-10">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[200px]">
+                                            {MINUTES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
                         </div>
@@ -1031,6 +1041,60 @@ export function EventModal({
                                 )}
                             </div>
                         </div>
+
+                        {/* ── Recorrência (apenas para novos eventos) ── */}
+                        {!isEditing && (
+                            <div className="rounded-xl border border-border/50 bg-muted/10 p-4 space-y-4 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500/40"></div>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-2">
+                                        <Repeat className="h-4 w-4 text-muted-foreground" />
+                                        <Label htmlFor="recurrence-switch" className="text-base font-semibold cursor-pointer">Repetir este evento</Label>
+                                    </div>
+                                    <Switch
+                                        id="recurrence-switch"
+                                        checked={enableRecurrence}
+                                        onCheckedChange={setEnableRecurrence}
+                                    />
+                                </div>
+
+                                {enableRecurrence && (
+                                    <div className="animate-in fade-in slide-in-from-top-2 duration-300 grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label className="text-sm">Frequência</Label>
+                                            <Select value={recurrenceRule} onValueChange={setRecurrenceRule}>
+                                                <SelectTrigger className="bg-background h-10">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="WEEKLY">Semanal</SelectItem>
+                                                    <SelectItem value="BIWEEKLY">Quinzenal</SelectItem>
+                                                    <SelectItem value="MONTHLY">Mensal</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-sm">Por quantas vezes?</Label>
+                                            <Input
+                                                type="number"
+                                                min={2}
+                                                max={52}
+                                                value={recurrenceCount}
+                                                onChange={e => setRecurrenceCount(Math.max(2, Math.min(52, parseInt(e.target.value) || 2)))}
+                                                className="bg-background h-10 font-mono"
+                                            />
+                                        </div>
+                                        <p className="col-span-2 text-xs text-muted-foreground">
+                                            Serão criados <strong>{recurrenceCount}</strong> eventos (
+                                            {recurrenceRule === "WEEKLY" ? `toda semana por ${recurrenceCount} semanas` :
+                                                recurrenceRule === "BIWEEKLY" ? `a cada 15 dias por ${recurrenceCount} ocorrências` :
+                                                    `todo mês por ${recurrenceCount} meses`}
+                                            ), cada um com sua própria transação financeira.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                     </div>
                 </div>

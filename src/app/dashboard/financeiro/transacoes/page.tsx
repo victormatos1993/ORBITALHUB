@@ -60,9 +60,9 @@ export default async function TransactionsPage({
                 </div>
                 <div className="flex items-center space-x-2">
                     <ExportTransactionsButton transactions={transactions} />
-                    <Button asChild>
-                        <Link href="/dashboard/financeiro/transacoes/novo">
-                            <Plus className="mr-2 h-4 w-4" /> Nova Transação
+                    <Button asChild variant="outline">
+                        <Link href="/dashboard/financeiro/contas-pagar">
+                            <Plus className="mr-2 h-4 w-4" /> Nova Despesa
                         </Link>
                     </Button>
                 </div>

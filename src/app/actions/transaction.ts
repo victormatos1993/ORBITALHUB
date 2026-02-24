@@ -15,6 +15,7 @@ const transactionSchema = z.object({
     categoryId: z.string().optional(),
     customerId: z.string().optional(),
     supplierId: z.string().optional(),
+    contaFinanceiraId: z.string().optional(),
     date: z.date(),
     status: z.enum(["pending", "paid"]),
 })
@@ -32,9 +33,10 @@ export async function createTransaction(formData: z.infer<typeof transactionSche
         return { error: "Campos inválidos" }
     }
 
-    const { description, amount, type, categoryId, customerId, supplierId, date, status } = validatedFields.data
+    const { description, amount, type, categoryId, customerId, supplierId, contaFinanceiraId, date, status } = validatedFields.data
 
     try {
+        const paidAt = status === 'paid' ? date : null
         await prisma.transaction.create({
             data: {
                 description,
@@ -42,20 +44,102 @@ export async function createTransaction(formData: z.infer<typeof transactionSche
                 type,
                 status,
                 date,
+                paidAt,
+                competenceDate: date,
                 userId: tenantId,
                 createdById: userId || null,
                 categoryId: categoryId || null,
                 customerId: customerId || null,
                 supplierId: supplierId || null,
+                contaFinanceiraId: contaFinanceiraId || null,
             },
         })
 
         revalidatePath("/dashboard/financeiro")
         revalidatePath("/dashboard/financeiro/transacoes")
+        revalidatePath("/dashboard/financeiro/contas-pagar")
+        revalidatePath("/dashboard/financeiro/contas-receber")
         return { success: true }
     } catch (error) {
         console.error("Failed to create transaction:", error)
         return { error: "Erro ao criar transação" }
+    }
+}
+
+/**
+ * Cria despesa com suporte a recorrência e parcelamento.
+ * recurrence: 'unique' | 'monthly' | 'weekly' | 'installment'
+ * occurrences: número de parcelas/ocorrências (para parcelado e recorrente)
+ */
+export async function createExpenseRecurring(data: {
+    description: string
+    amount: number
+    categoryId?: string
+    supplierId?: string
+    contaFinanceiraId?: string
+    date: Date
+    status: 'pending' | 'paid'
+    recurrence: 'unique' | 'monthly' | 'weekly' | 'installment'
+    occurrences: number
+}) {
+    const { userId, tenantId } = await getTenantInfo()
+    if (!tenantId) return { error: "Não autorizado" }
+
+    try {
+        const count = data.recurrence === 'unique' ? 1 : Math.max(1, data.occurrences)
+        const transactions: any[] = []
+
+        for (let i = 0; i < count; i++) {
+            const installmentDate = new Date(data.date)
+
+            if (data.recurrence === 'monthly') {
+                installmentDate.setMonth(installmentDate.getMonth() + i)
+            } else if (data.recurrence === 'weekly') {
+                installmentDate.setDate(installmentDate.getDate() + (i * 7))
+            } else if (data.recurrence === 'installment') {
+                installmentDate.setMonth(installmentDate.getMonth() + i)
+            }
+
+            // Descrição com sufixo de parcela
+            let desc = data.description
+            if (count > 1) {
+                desc = `${data.description} (${i + 1}/${count})`
+            }
+
+            // Somente a primeira pode estar paga, se status=paid
+            const isFirstAndPaid = i === 0 && data.status === 'paid'
+            const txStatus = isFirstAndPaid ? 'paid' : 'pending'
+
+            transactions.push({
+                description: desc,
+                amount: data.recurrence === 'installment' ? data.amount / count : data.amount,
+                type: 'expense' as const,
+                status: txStatus,
+                date: installmentDate,
+                paidAt: isFirstAndPaid ? installmentDate : null,
+                competenceDate: installmentDate,
+                userId: tenantId,
+                createdById: userId || null,
+                categoryId: data.categoryId || null,
+                supplierId: data.supplierId || null,
+                contaFinanceiraId: data.contaFinanceiraId || null,
+                installmentNumber: count > 1 ? i + 1 : null,
+                installmentTotal: count > 1 ? count : null,
+            })
+        }
+
+        // Cria todas de uma vez
+        for (const tx of transactions) {
+            await prisma.transaction.create({ data: tx })
+        }
+
+        revalidatePath("/dashboard/financeiro")
+        revalidatePath("/dashboard/financeiro/transacoes")
+        revalidatePath("/dashboard/financeiro/contas-pagar")
+        return { success: true, count }
+    } catch (error) {
+        console.error("Failed to create recurring expense:", error)
+        return { error: "Erro ao criar despesa" }
     }
 }
 
@@ -135,6 +219,8 @@ export async function getTransactions(filters?: TransactionFilters) {
                 supplierName: t.supplier?.name,
                 supplierDocument: t.supplier?.document,
                 categoryName: t.category?.name,
+                // ID da venda vinculada — para linkar ao cupom fiscal
+                saleId: t.saleId ?? null,
                 // ID do evento vinculado — necessário para abrir o EventModal
                 eventId: (t as any).event?.id ?? null,
                 // Campos do evento vinculado — para o PDV montar a URL
@@ -382,4 +468,301 @@ export async function updateTransaction(id: string, formData: z.infer<typeof tra
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// NOVAS AÇÕES FINANCEIRAS
+// ═══════════════════════════════════════════════════════════════════════
 
+/**
+ * Confirma o pagamento/recebimento de uma transação.
+ * Move do regime de competência para o regime de caixa.
+ */
+export async function confirmarPagamento(transactionId: string, contaFinanceiraId?: string) {
+    const { tenantId } = await getTenantInfo()
+    if (!tenantId) return { error: "Não autorizado" }
+
+    try {
+        const tx = await prisma.transaction.findFirst({
+            where: { id: transactionId, userId: tenantId },
+        })
+        if (!tx) return { error: "Transação não encontrada" }
+        if (tx.status === 'paid') return { error: "Transação já está paga" }
+
+        await prisma.transaction.update({
+            where: { id: transactionId },
+            data: {
+                status: 'paid',
+                paidAt: new Date(),
+                ...(contaFinanceiraId ? { contaFinanceiraId } : {}),
+            },
+        })
+
+        revalidatePath("/dashboard/financeiro")
+        revalidatePath("/dashboard/financeiro/transacoes")
+        revalidatePath("/dashboard/financeiro/contas-pagar")
+        revalidatePath("/dashboard/financeiro/contas-receber")
+        return { success: true }
+    } catch (error) {
+        console.error("Erro ao confirmar pagamento:", error)
+        return { error: "Erro ao confirmar pagamento" }
+    }
+}
+
+/**
+ * Busca transações pendentes (Contas a Pagar).
+ */
+export async function getContasAPagar() {
+    const { tenantId } = await getTenantInfo()
+    if (!tenantId) return []
+
+    try {
+        const transactions = await prisma.transaction.findMany({
+            where: { userId: tenantId, type: 'expense', status: 'pending' },
+            include: {
+                category: { select: { name: true, code: true } },
+                supplier: { select: { name: true } },
+                contaFinanceira: { select: { name: true } },
+            },
+            orderBy: { date: 'asc' },
+        })
+
+        return transactions.map((t) => ({
+            ...t,
+            amount: Number(t.amount),
+            taxaAplicada: t.taxaAplicada ? Number(t.taxaAplicada) : null,
+            date: t.date.toISOString().split('T')[0],
+            categoryName: t.category?.name,
+            categoryCode: t.category?.code,
+            supplierName: t.supplier?.name,
+            contaName: t.contaFinanceira?.name,
+        }))
+    } catch (error) {
+        console.error("Erro ao buscar contas a pagar:", error)
+        return []
+    }
+}
+
+/**
+ * Busca transações de receita pendentes (Contas a Receber).
+ */
+export async function getContasAReceber() {
+    const { tenantId } = await getTenantInfo()
+    if (!tenantId) return []
+
+    try {
+        const transactions = await prisma.transaction.findMany({
+            where: { userId: tenantId, type: 'income', status: 'pending' },
+            include: {
+                category: { select: { name: true, code: true } },
+                customer: { select: { name: true } },
+                contaFinanceira: { select: { name: true } },
+                maquinaCartao: { select: { name: true } },
+            },
+            orderBy: { date: 'asc' },
+        })
+
+        return transactions.map((t) => ({
+            ...t,
+            amount: Number(t.amount),
+            taxaAplicada: t.taxaAplicada ? Number(t.taxaAplicada) : null,
+            date: t.date.toISOString().split('T')[0],
+            categoryName: t.category?.name,
+            categoryCode: t.category?.code,
+            customerName: t.customer?.name,
+            contaName: t.contaFinanceira?.name,
+            maquinaName: t.maquinaCartao?.name,
+        }))
+    } catch (error) {
+        console.error("Erro ao buscar contas a receber:", error)
+        return []
+    }
+}
+
+/**
+ * Relatório Regime de Competência — DRE simplificado.
+ * Usa competenceDate ou date para agrupar (o que importa é quando o fato gerador aconteceu).
+ */
+export async function getRelatorioCompetencia(month: number, year: number) {
+    const { tenantId } = await getTenantInfo()
+    if (!tenantId) return null
+
+    const start = new Date(year, month - 1, 1)
+    const end = endOfMonth(start)
+
+    try {
+        // Todas as transações cuja competência cai no período (independente de estarem pagas)
+        const transactions = await prisma.transaction.findMany({
+            where: {
+                userId: tenantId,
+                OR: [
+                    { competenceDate: { gte: start, lte: end } },
+                    { competenceDate: null, date: { gte: start, lte: end } },
+                ],
+            },
+            include: { category: { select: { code: true, name: true, type: true } } },
+        })
+
+        let faturamentoBruto = 0
+        let cmv = 0
+        let impostos = 0
+        let taxasCartao = 0
+        let fretes = 0
+        let despesasFixas = 0
+        let outrasReceitas = 0
+        let outrasDespesas = 0
+
+        for (const t of transactions) {
+            const valor = Number(t.amount)
+            const code = t.category?.code || ''
+
+            if (t.type === 'income') {
+                if (code.startsWith('1.1') || code.startsWith('1.2')) {
+                    faturamentoBruto += valor
+                } else {
+                    outrasReceitas += valor
+                }
+            } else {
+                if (code === '2.1') cmv += valor
+                else if (code === '2.2') impostos += valor
+                else if (code === '2.3') taxasCartao += valor
+                else if (code === '2.4') fretes += valor
+                else if (code.startsWith('3')) despesasFixas += valor
+                else outrasDespesas += valor
+            }
+        }
+
+        const custosVariaveis = cmv + impostos + taxasCartao + fretes
+        const margemContribuicao = faturamentoBruto - custosVariaveis
+        const lucroLiquido = margemContribuicao - despesasFixas + outrasReceitas - outrasDespesas
+        const margemLucro = faturamentoBruto > 0 ? (lucroLiquido / faturamentoBruto) * 100 : 0
+
+        return {
+            faturamentoBruto,
+            cmv,
+            impostos,
+            taxasCartao,
+            fretes,
+            custosVariaveis,
+            margemContribuicao,
+            despesasFixas,
+            outrasReceitas,
+            outrasDespesas,
+            lucroLiquido,
+            margemLucro,
+        }
+    } catch (error) {
+        console.error("Erro no relatório de competência:", error)
+        return null
+    }
+}
+
+/**
+ * Relatório Regime de Caixa — fluxo real de dinheiro.
+ * Usa paidAt para receitas/despesas efetivadas.
+ */
+export async function getRelatorioCaixa(month: number, year: number) {
+    const { tenantId } = await getTenantInfo()
+    if (!tenantId) return null
+
+    const start = new Date(year, month - 1, 1)
+    const end = endOfMonth(start)
+
+    try {
+        // Transações efetivamente pagas no período
+        const transactions = await prisma.transaction.findMany({
+            where: {
+                userId: tenantId,
+                status: 'paid',
+                OR: [
+                    { paidAt: { gte: start, lte: end } },
+                    { paidAt: null, date: { gte: start, lte: end }, status: 'paid' },
+                ],
+            },
+        })
+
+        let entradasReais = 0
+        let saidasReais = 0
+
+        for (const t of transactions) {
+            const valor = Number(t.amount)
+            if (t.type === 'income') entradasReais += valor
+            else saidasReais += valor
+        }
+
+        return {
+            entradasReais,
+            saidasReais,
+            saldoPeriodo: entradasReais - saidasReais,
+        }
+    } catch (error) {
+        console.error("Erro no relatório de caixa:", error)
+        return null
+    }
+}
+
+/**
+ * Projeção de fluxo de caixa para os próximos N dias.
+ * Retorna entradas e saídas previstas por período.
+ */
+export async function getProjecaoFluxoCaixa() {
+    const { tenantId } = await getTenantInfo()
+    if (!tenantId) return null
+
+    const now = new Date()
+    const d30 = new Date(now); d30.setDate(d30.getDate() + 30)
+    const d60 = new Date(now); d60.setDate(d60.getDate() + 60)
+    const d90 = new Date(now); d90.setDate(d90.getDate() + 90)
+
+    try {
+        const pendentes = await prisma.transaction.findMany({
+            where: {
+                userId: tenantId,
+                status: 'pending',
+                date: { gte: now, lte: d90 },
+            },
+        })
+
+        const calcPeriodo = (inicio: Date, fim: Date) => {
+            const txs = pendentes.filter(t => t.date >= inicio && t.date <= fim)
+            let entradas = 0, saidas = 0
+            txs.forEach(t => {
+                const v = Number(t.amount)
+                if (t.type === 'income') entradas += v
+                else saidas += v
+            })
+            return { entradas, saidas, saldo: entradas - saidas }
+        }
+
+        // Saldo atual (soma de todas as transações pagas)
+        const totalPago = await prisma.transaction.aggregate({
+            _sum: { amount: true },
+            where: { userId: tenantId, type: 'income', status: 'paid' },
+        })
+        const totalDespesaPaga = await prisma.transaction.aggregate({
+            _sum: { amount: true },
+            where: { userId: tenantId, type: 'expense', status: 'paid' },
+        })
+        const saldoAtual = (Number(totalPago._sum.amount) || 0) - (Number(totalDespesaPaga._sum.amount) || 0)
+
+        const proj30 = calcPeriodo(now, d30)
+        const proj60 = calcPeriodo(d30, d60)
+        const proj90 = calcPeriodo(d60, d90)
+
+        // Alerta de furo de caixa
+        const saldoProjetado30 = saldoAtual + proj30.saldo
+        const furoCaixa = saldoProjetado30 < 0
+
+        return {
+            saldoAtual,
+            periodos: [
+                { label: 'Próximos 30 dias', ...proj30 },
+                { label: '30-60 dias', ...proj60 },
+                { label: '60-90 dias', ...proj90 },
+            ],
+            saldoProjetado30,
+            furoCaixa,
+        }
+    } catch (error) {
+        console.error("Erro na projeção de fluxo:", error)
+        return null
+    }
+}
