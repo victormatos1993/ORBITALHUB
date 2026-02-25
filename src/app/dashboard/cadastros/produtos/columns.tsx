@@ -20,6 +20,7 @@ export type Product = {
     name: string
     description: string | null
     price: number
+    averageCost: number
     stockQuantity: number
     manageStock: boolean
     ncm: string | null
@@ -82,8 +83,33 @@ export const columns: ColumnDef<Product>[] = [
     { accessorKey: "stockQuantity", header: "Estoque" },
     {
         accessorKey: "price",
-        header: "Preço",
+        header: "Preço Venda",
         cell: ({ row }) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(row.getValue("price"))),
+    },
+    {
+        accessorKey: "averageCost",
+        header: "Custo Médio",
+        cell: ({ row }) => {
+            const cost = Number(row.original.averageCost)
+            return cost > 0
+                ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cost)
+                : "—"
+        },
+    },
+    {
+        id: "margin",
+        header: "Margem",
+        cell: ({ row }) => {
+            const price = Number(row.original.price)
+            const cost = Number(row.original.averageCost)
+            if (cost <= 0 || price <= 0) return "—"
+            const margin = ((price - cost) / price) * 100
+            return (
+                <span className={margin >= 0 ? "text-emerald-500 font-medium" : "text-red-500 font-medium"}>
+                    {margin.toFixed(1)}%
+                </span>
+            )
+        },
     },
     { accessorKey: "ncm", header: "NCM", cell: ({ row }) => row.getValue("ncm") || "-" },
     { id: "actions", cell: ({ row }) => <ActionsCell product={row.original} /> },

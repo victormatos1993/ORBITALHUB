@@ -42,7 +42,8 @@ export async function getProducts(filters?: ProductFilters) {
 
         const serializedProducts = products.map(product => ({
             ...product,
-            price: product.price.toNumber()
+            price: product.price.toNumber(),
+            averageCost: (product as any).averageCost ? Number((product as any).averageCost) : 0,
         }))
 
         return {
@@ -68,7 +69,8 @@ export async function getProduct(id: string) {
 
         return {
             ...product,
-            price: product.price.toNumber()
+            price: product.price.toNumber(),
+            averageCost: (product as any).averageCost ? Number((product as any).averageCost) : 0,
         }
     } catch (error) {
         console.error("Erro ao buscar produto:", error)

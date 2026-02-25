@@ -94,6 +94,7 @@ export const navigationRoutes: NavRoute[] = [
         roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
         items: [
             { name: "Produtos", href: "/dashboard/cadastros/produtos" },
+            { name: "Entrada de Mercadorias", href: "/dashboard/estoque/entrada" },
         ],
     },
     {

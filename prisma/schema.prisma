@@ -45,6 +45,9 @@ model User {
   notifications       Notification[]
   contasFinanceiras   ContaFinanceira[]
   maquinasCartao      MaquinaCartao[]
+  createdPurchaseInvoices PurchaseInvoice[] @relation("PurchaseCreator")
+  purchaseInvoices    PurchaseInvoice[]
+  stockEntries        StockEntry[]
   parentAdmin         User?          @relation("TeamMembers", fields: [parentAdminId], references: [id])
   teamMembers         User[]         @relation("TeamMembers")
 }
@@ -179,6 +182,7 @@ model Supplier {
   createdBy    User?         @relation("SupplierCreator", fields: [createdById], references: [id])
   user         User          @relation(fields: [userId], references: [id])
   transactions Transaction[]
+  purchaseInvoices PurchaseInvoice[]
 }
 
 model Transaction {
@@ -205,12 +209,14 @@ model Transaction {
   installmentNumber  Int?
   installmentTotal   Int?
   taxaAplicada       Decimal?
+  purchaseInvoiceId  String?
   category           Category?         @relation(fields: [categoryId], references: [id])
   contaFinanceira    ContaFinanceira?  @relation(fields: [contaFinanceiraId], references: [id])
   maquinaCartao      MaquinaCartao?    @relation(fields: [maquinaCartaoId], references: [id])
   createdBy          User?             @relation("TransactionCreator", fields: [createdById], references: [id])
   customer           Customer?         @relation(fields: [customerId], references: [id])
   event              AgendaEvent?      @relation(fields: [eventId], references: [id])
+  purchaseInvoice    PurchaseInvoice?  @relation(fields: [purchaseInvoiceId], references: [id])
   quote              Quote?            @relation(fields: [quoteId], references: [id])
   sale               Sale?             @relation(fields: [saleId], references: [id])
   supplier           Supplier?         @relation(fields: [supplierId], references: [id])
@@ -230,6 +236,7 @@ model ContaFinanceira {
   updatedAt    DateTime      @updatedAt
   user         User          @relation(fields: [userId], references: [id])
   transactions Transaction[]
+  purchaseInvoices PurchaseInvoice[]
 }
 
 /// Maquininhas de cartão — cada empresa pode ter múltiplas
@@ -245,6 +252,7 @@ model MaquinaCartao {
   user             User          @relation(fields: [userId], references: [id])
   taxas            TaxaMaquina[]
   transactions     Transaction[]
+  purchaseInvoices PurchaseInvoice[]
 }
 
 /// Taxas por método de pagamento para cada maquininha
@@ -263,6 +271,7 @@ model Product {
   name          String
   description   String?
   price         Decimal       @default(0)
+  averageCost   Decimal       @default(0)  // custo médio ponderado
   stockQuantity Int           @default(0)
   manageStock   Boolean       @default(true)
   ncm           String?
@@ -276,6 +285,62 @@ model Product {
   user          User          @relation(fields: [userId], references: [id])
   quoteItems    QuoteItem[]
   saleItems     SaleItem[]
+  stockEntries  StockEntry[]
+}
+
+/// Nota de Entrada — agrupa itens de uma NF com rateio de custos e pagamento
+model PurchaseInvoice {
+  id                String            @id @default(cuid())
+  invoiceNumber     String?                          // nº NF-e
+  invoiceKey        String?                          // chave de acesso NF-e (44 dígitos)
+  supplierId        String?
+  entryDate         DateTime          @default(now())
+  subtotal          Decimal           @default(0)    // soma dos itens (sem frete/impostos)
+  freightCost       Decimal           @default(0)
+  taxPercent        Decimal           @default(0)    // 0.15 = 15%
+  otherCosts        Decimal           @default(0)
+  totalCost         Decimal           @default(0)    // subtotal + frete + impostos + outros
+  notes             String?
+
+  // ── Pagamento ──
+  paymentStatus     String            @default("PENDING")  // PAID | PENDING | PARTIAL
+  paymentMethod     String?           // PIX, BOLETO, DINHEIRO, CREDITO, etc.
+  paymentType       String?           // A_VISTA, PARCELADO
+  installments      Int?
+  contaFinanceiraId String?
+  maquinaCartaoId   String?
+  paidAt            DateTime?
+
+  userId            String
+  createdById       String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  supplier          Supplier?         @relation(fields: [supplierId], references: [id])
+  contaFinanceira   ContaFinanceira?  @relation(fields: [contaFinanceiraId], references: [id])
+  maquinaCartao     MaquinaCartao?    @relation(fields: [maquinaCartaoId], references: [id])
+  createdBy         User?             @relation("PurchaseCreator", fields: [createdById], references: [id])
+  user              User              @relation(fields: [userId], references: [id])
+  items             StockEntry[]
+  transactions      Transaction[]
+}
+
+/// Entrada de estoque — cada item de uma NF de entrada
+model StockEntry {
+  id                String          @id @default(cuid())
+  quantity          Int                              // qtd adquirida
+  remainingQuantity Int                              // qtd ainda em estoque (FIFO)
+  unitCost          Decimal                          // custo unitário COM rateio
+  rawUnitCost       Decimal                          // custo unitário SEM rateio (preço NF)
+  productId         String
+  purchaseInvoiceId String
+  userId            String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  purchaseInvoice   PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [userId], references: [id])
 }
 
 model Sale {

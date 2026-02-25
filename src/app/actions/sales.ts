@@ -163,6 +163,28 @@ export async function processSale(tenantId: string, userId: string | null, data:
                 }
             })
 
+            // ── Buscar/criar categoria CMV (código 2.1) para uso no loop de itens ──
+            let cmvCategory = await tx.category.findFirst({
+                where: { userId: tenantId, code: "2.1", isSystem: true },
+            })
+            if (!cmvCategory) {
+                cmvCategory = await tx.category.findFirst({
+                    where: { userId: tenantId, name: "CMV (Custo da Mercadoria)", type: "expense" },
+                })
+            }
+            if (!cmvCategory) {
+                cmvCategory = await tx.category.create({
+                    data: {
+                        userId: tenantId,
+                        name: "CMV (Custo da Mercadoria)",
+                        type: "expense",
+                        code: "2.1",
+                        color: "#fbbf24",
+                        isSystem: true,
+                    },
+                })
+            }
+
             // ── Criar SaleItems e decrementar estoque ──
             for (const item of data.items) {
                 await tx.saleItem.create({
@@ -186,6 +208,27 @@ export async function processSale(tenantId: string, userId: string | null, data:
                                 stockQuantity: { decrement: item.quantity }
                             }
                         })
+
+                        // ── Gerar CMV automaticamente usando custo médio ──
+                        const avgCost = Number((product as any).averageCost)
+                        if (avgCost > 0) {
+                            const cmvAmount = Math.round(item.quantity * avgCost * 100) / 100
+                            await tx.transaction.create({
+                                data: {
+                                    userId: tenantId,
+                                    createdById: userId,
+                                    description: `CMV — ${product.name} (${item.quantity}un × R$${avgCost.toFixed(2)})`,
+                                    amount: cmvAmount,
+                                    type: "expense",
+                                    status: "paid",
+                                    paidAt: data.date,
+                                    date: data.date,
+                                    competenceDate: data.date,
+                                    saleId: sale.id,
+                                    categoryId: cmvCategory!.id,
+                                } as any,
+                            })
+                        }
                     }
                 }
             }
