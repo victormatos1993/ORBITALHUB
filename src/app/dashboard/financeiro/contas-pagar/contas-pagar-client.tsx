@@ -2,9 +2,9 @@
 
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { format, isPast, isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, addMonths, subMonths } from "date-fns"
+import { format, isPast, isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, addMonths, subMonths, addDays, eachDayOfInterval, getDaysInMonth, isSameDay } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { createExpenseRecurring, confirmarPagamento, deleteTransaction } from "@/app/actions/transaction"
+import { createExpenseRecurring, confirmarPagamento, deleteTransaction, updateTransaction } from "@/app/actions/transaction"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -15,7 +15,7 @@ import {
     CheckCircle, Clock, AlertTriangle, AlertCircle, DollarSign,
     Plus, X, Receipt, Trash2, ChevronLeft, ChevronRight,
     Calendar, CalendarDays, List, Repeat, RefreshCw, CreditCard,
-    Filter, Wallet, Building2,
+    Filter, Wallet, Building2, Pencil, ClipboardList,
 } from "lucide-react"
 
 // ── Tipos ──────────────────────────────────────────────────────────
@@ -25,17 +25,21 @@ interface ContaPagar {
     amount: number
     date: string
     categoryName?: string | null
+    categoryCode?: string | null
     supplierName?: string | null
     contaName?: string | null
     installmentNumber?: number | null
     installmentTotal?: number | null
+    categoryId?: string | null
+    supplierId?: string | null
+    contaFinanceiraId?: string | null
 }
 
 interface CategoryOption { id: string; name: string; code?: string | null; level?: number | null }
 interface SupplierOption { id: string; name: string }
 interface ContaOption { id: string; name: string; tipo: string; isDefault: boolean }
 
-type ViewMode = "all" | "month" | "week" | "today"
+type ViewMode = "all" | "month" | "week" | "today" | "3months" | "6months"
 type RecurrenceType = "unique" | "monthly" | "weekly" | "installment"
 
 interface ContasPagarClientProps {
@@ -72,12 +76,21 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
     const router = useRouter()
     const [loading, setLoading] = useState<string | null>(null)
     const [showForm, setShowForm] = useState(false)
+    const [editingConta, setEditingConta] = useState<ContaPagar | null>(null)
+    const [showPendentes, setShowPendentes] = useState(false)
     const [saving, setSaving] = useState(false)
 
     // ── Filtros ──
     const [viewMode, setViewMode] = useState<ViewMode>("month")
     const [selectedMonth, setSelectedMonth] = useState(new Date())
     const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "upcoming">("all")
+    const [categoryTab, setCategoryTab] = useState<string>("all")
+    const [selectedCardIndex, setSelectedCardIndex] = useState(0)
+
+    const handleViewModeChange = (mode: ViewMode) => {
+        setViewMode(mode)
+        setSelectedCardIndex(0)
+    }
 
     // ── Dialog de Pagamento ──
     const [payingConta, setPayingConta] = useState<ContaPagar | null>(null)
@@ -134,7 +147,20 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
         setContaFinanceiraId(""); setDate(format(new Date(), "yyyy-MM-dd"))
         setOccurrences("")
         setStatus("pending"); setRecurrence("unique")
-        setShowForm(false)
+        setShowForm(false); setEditingConta(null)
+    }
+
+    const openEditForm = (conta: ContaPagar) => {
+        setEditingConta(conta)
+        setDescription(conta.description)
+        setAmount(String(conta.amount))
+        setCategoryId(conta.categoryId || "")
+        setSupplierId(conta.supplierId || "")
+        setContaFinanceiraId(conta.contaFinanceiraId || "")
+        setDate(conta.date)
+        setStatus("pending")
+        setRecurrence("unique")
+        setShowForm(true)
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -144,55 +170,83 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
 
         setSaving(true)
         try {
-            const result = await createExpenseRecurring({
-                description,
-                amount: parsedAmount,
-                categoryId: categoryId || undefined,
-                supplierId: supplierId || undefined,
-                contaFinanceiraId: contaFinanceiraId || undefined,
-                date: new Date(date + "T12:00:00"),
-                status,
-                recurrence,
-                occurrences: parseInt(occurrences) || 2,
-            })
-
-            if (result.error) {
-                toast.error(result.error)
-            } else {
-                const count = (result as any).count || 1
-                if (count > 1) {
-                    toast.success(`${count} lançamentos criados!`)
+            if (editingConta) {
+                // Modo edição
+                const result = await updateTransaction(editingConta.id, {
+                    description,
+                    amount: parsedAmount,
+                    type: "expense",
+                    categoryId: categoryId || undefined,
+                    supplierId: supplierId || undefined,
+                    contaFinanceiraId: contaFinanceiraId || undefined,
+                    date: new Date(date + "T12:00:00"),
+                    status,
+                })
+                if (result.error) {
+                    toast.error(result.error)
                 } else {
-                    toast.success("Despesa cadastrada!")
+                    toast.success("Despesa atualizada!")
+                    resetForm()
+                    router.refresh()
                 }
-                resetForm()
-                router.refresh()
+            } else {
+                // Modo criação
+                const result = await createExpenseRecurring({
+                    description,
+                    amount: parsedAmount,
+                    categoryId: categoryId || undefined,
+                    supplierId: supplierId || undefined,
+                    contaFinanceiraId: contaFinanceiraId || undefined,
+                    date: new Date(date + "T12:00:00"),
+                    status,
+                    recurrence,
+                    occurrences: parseInt(occurrences) || 2,
+                })
+
+                if (result.error) {
+                    toast.error(result.error)
+                } else {
+                    const count = (result as any).count || 1
+                    if (count > 1) {
+                        toast.success(`${count} lançamentos criados!`)
+                    } else {
+                        toast.success("Despesa cadastrada!")
+                    }
+                    resetForm()
+                    router.refresh()
+                }
             }
         } finally { setSaving(false) }
     }
 
     // ── Filtragem de contas ──
+    const getDateRange = useMemo(() => {
+        if (viewMode === "month") {
+            return { start: startOfMonth(selectedMonth), end: endOfMonth(selectedMonth) }
+        } else if (viewMode === "week") {
+            return { start: startOfWeek(new Date(), { weekStartsOn: 1 }), end: endOfWeek(new Date(), { weekStartsOn: 1 }) }
+        } else if (viewMode === "3months") {
+            const start = startOfMonth(selectedMonth)
+            return { start, end: endOfMonth(addMonths(start, 2)) }
+        } else if (viewMode === "6months") {
+            const start = startOfMonth(selectedMonth)
+            return { start, end: endOfMonth(addMonths(start, 5)) }
+        }
+        return null
+    }, [viewMode, selectedMonth])
+
     const filteredContas = useMemo(() => {
         let result = [...contas]
 
         // Filtro por período
-        if (viewMode === "month") {
-            const start = startOfMonth(selectedMonth)
-            const end = endOfMonth(selectedMonth)
-            result = result.filter(c => {
-                const d = new Date(c.date + "T12:00:00")
-                return isWithinInterval(d, { start, end })
-            })
-        } else if (viewMode === "week") {
-            const start = startOfWeek(new Date(), { weekStartsOn: 1 })
-            const end = endOfWeek(new Date(), { weekStartsOn: 1 })
-            result = result.filter(c => {
-                const d = new Date(c.date + "T12:00:00")
-                return isWithinInterval(d, { start, end })
-            })
-        } else if (viewMode === "today") {
+        if (viewMode === "today") {
             const today = format(new Date(), "yyyy-MM-dd")
             result = result.filter(c => c.date === today)
+        } else if (getDateRange) {
+            result = result.filter(c => {
+                const d = new Date(c.date + "T12:00:00")
+                return isWithinInterval(d, getDateRange)
+            })
         }
 
         // Filtro por status
@@ -208,12 +262,105 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
             })
         }
 
+        // Filtro por categoria
+        if (categoryTab !== "all") {
+            result = result.filter(c => {
+                const code = c.categoryCode || ""
+                switch (categoryTab) {
+                    case "cmv": return code.startsWith("2.1")
+                    case "fixas": return code.startsWith("3")
+                    case "frete": return code.startsWith("2.4")
+                    case "embalagem": return code.startsWith("2.5")
+                    default: return true
+                }
+            })
+        }
+
         return result
-    }, [contas, viewMode, selectedMonth, statusFilter])
+    }, [contas, viewMode, selectedMonth, statusFilter, categoryTab, getDateRange])
+
+    // ── Dados da tabela (sub-filtro por card selecionado em 3m/6m) ──
+    const tableContas = useMemo(() => {
+        if (viewMode !== "3months" && viewMode !== "6months") return filteredContas
+
+        const cardMonth = addMonths(startOfMonth(selectedMonth), selectedCardIndex)
+        const mStart = startOfMonth(cardMonth)
+        const mEnd = endOfMonth(cardMonth)
+        return filteredContas.filter(c => {
+            const d = new Date(c.date + "T12:00:00")
+            return isWithinInterval(d, { start: mStart, end: mEnd })
+        })
+    }, [filteredContas, viewMode, selectedMonth, selectedCardIndex])
+
+    // ── Cards de período ──
+    const periodCards = useMemo(() => {
+        if (viewMode === "today" || viewMode === "all") return []
+
+        if (viewMode === "week" && getDateRange) {
+            const days = eachDayOfInterval(getDateRange)
+            return days.map(day => {
+                const dayStr = format(day, "yyyy-MM-dd")
+                const dayContas = filteredContas.filter(c => c.date === dayStr)
+                const total = dayContas.reduce((s, c) => s + c.amount, 0)
+                return {
+                    label: format(day, "EEE", { locale: ptBR }),
+                    sublabel: format(day, "dd/MM"),
+                    total,
+                    count: dayContas.length,
+                    isToday: isSameDay(day, new Date()),
+                }
+            })
+        }
+
+        if (viewMode === "month" && getDateRange) {
+            const daysInMonth = getDaysInMonth(selectedMonth)
+            const days = eachDayOfInterval(getDateRange)
+            return days.map(day => {
+                const dayStr = format(day, "yyyy-MM-dd")
+                const dayContas = filteredContas.filter(c => c.date === dayStr)
+                const total = dayContas.reduce((s, c) => s + c.amount, 0)
+                return {
+                    label: format(day, "dd"),
+                    sublabel: format(day, "EEE", { locale: ptBR }),
+                    total,
+                    count: dayContas.length,
+                    isToday: isSameDay(day, new Date()),
+                }
+            })
+        }
+
+        if ((viewMode === "3months" || viewMode === "6months") && getDateRange) {
+            const numMonths = viewMode === "3months" ? 3 : 6
+            return Array.from({ length: numMonths }, (_, i) => {
+                const monthDate = addMonths(startOfMonth(selectedMonth), i)
+                const mStart = startOfMonth(monthDate)
+                const mEnd = endOfMonth(monthDate)
+                const monthContas = filteredContas.filter(c => {
+                    const d = new Date(c.date + "T12:00:00")
+                    return isWithinInterval(d, { start: mStart, end: mEnd })
+                })
+                const total = monthContas.reduce((s, c) => s + c.amount, 0)
+                return {
+                    label: format(monthDate, "MMM", { locale: ptBR }),
+                    sublabel: format(monthDate, "yyyy"),
+                    total,
+                    count: monthContas.length,
+                    isToday: isSameDay(startOfMonth(new Date()), mStart),
+                }
+            })
+        }
+
+        return []
+    }, [viewMode, getDateRange, filteredContas, selectedMonth])
 
     const total = filteredContas.reduce((s, c) => s + c.amount, 0)
     const overdueCount = filteredContas.filter(c => { const d = new Date(c.date + "T12:00:00"); return isPast(d) && !isToday(d) }).length
     const todayCount = filteredContas.filter(c => { const d = new Date(c.date + "T12:00:00"); return isToday(d) }).length
+
+    // Contas que precisam de revisão (geradas automaticamente por NF)
+    const pendentes = useMemo(() =>
+        contas.filter(c => c.description.startsWith("Compra de Mercadoria") && !c.contaName)
+        , [contas])
 
     const expenseCategories = categories.filter(c => {
         if (c.code) return c.code.startsWith("3") || c.code.startsWith("4")
@@ -221,6 +368,20 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
     })
 
     const monthLabel = format(selectedMonth, "MMMM yyyy", { locale: ptBR })
+
+    const periodLabel = useMemo(() => {
+        if (viewMode === "3months") {
+            const start = format(selectedMonth, "MMM/yy", { locale: ptBR })
+            const end = format(addMonths(selectedMonth, 2), "MMM/yy", { locale: ptBR })
+            return `${start} — ${end}`
+        }
+        if (viewMode === "6months") {
+            const start = format(selectedMonth, "MMM/yy", { locale: ptBR })
+            const end = format(addMonths(selectedMonth, 5), "MMM/yy", { locale: ptBR })
+            return `${start} — ${end}`
+        }
+        return monthLabel
+    }, [viewMode, selectedMonth, monthLabel])
 
     return (
         <div className="space-y-4">
@@ -231,7 +392,7 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                         <DollarSign className="h-6 w-6 text-red-500" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm text-muted-foreground">Total Pendente {viewMode === "month" ? `em ${monthLabel}` : viewMode === "week" ? "esta semana" : viewMode === "today" ? "hoje" : ""}</p>
+                        <p className="text-sm text-muted-foreground">Total Pendente {viewMode === "month" ? `em ${monthLabel}` : viewMode === "week" ? "esta semana" : viewMode === "today" ? "hoje" : viewMode === "3months" ? `em ${periodLabel}` : viewMode === "6months" ? `em ${periodLabel}` : ""}</p>
                         <p className="text-2xl font-bold text-red-500">{formatBRL(total)}</p>
                     </div>
                     <div className="flex items-center gap-3 flex-wrap">
@@ -245,10 +406,18 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                                 <AlertTriangle className="h-3 w-3" /> {todayCount} vence{todayCount > 1 ? "m" : ""} hoje
                             </Badge>
                         )}
-                        <span className="text-sm text-muted-foreground">{filteredContas.length} registro{filteredContas.length !== 1 ? "s" : ""}</span>
-                        <Button onClick={() => setShowForm(!showForm)} className="gap-1.5">
-                            {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                            {showForm ? "Cancelar" : "Nova Despesa"}
+                        <Button variant={pendentes.length > 0 ? "destructive" : "outline"} onClick={() => setShowPendentes(!showPendentes)} className="gap-1.5">
+                            <ClipboardList className="h-4 w-4" />
+                            {pendentes.length === 0
+                                ? "0 Tarefas Pendentes"
+                                : pendentes.length === 1
+                                    ? "1 Tarefa Pendente"
+                                    : `${pendentes.length} Tarefas Pendentes`
+                            }
+                        </Button>
+                        <Button onClick={() => { if (showForm && !editingConta) { resetForm() } else { resetForm(); setShowForm(true) } }} className="gap-1.5">
+                            {showForm && !editingConta ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                            {showForm && !editingConta ? "Cancelar" : "Nova Despesa"}
                         </Button>
                     </div>
                 </div>
@@ -268,11 +437,13 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                             { value: "today" as ViewMode, label: "Hoje", icon: <Calendar className="h-3.5 w-3.5" /> },
                             { value: "week" as ViewMode, label: "Semana", icon: <CalendarDays className="h-3.5 w-3.5" /> },
                             { value: "month" as ViewMode, label: "Mês", icon: <CalendarDays className="h-3.5 w-3.5" /> },
+                            { value: "3months" as ViewMode, label: "3 Meses", icon: <CalendarDays className="h-3.5 w-3.5" /> },
+                            { value: "6months" as ViewMode, label: "6 Meses", icon: <CalendarDays className="h-3.5 w-3.5" /> },
                             { value: "all" as ViewMode, label: "Tudo", icon: <List className="h-3.5 w-3.5" /> },
                         ]).map(opt => (
                             <button
                                 key={opt.value}
-                                onClick={() => setViewMode(opt.value)}
+                                onClick={() => handleViewModeChange(opt.value)}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === opt.value
                                     ? "bg-primary text-primary-foreground"
                                     : "hover:bg-muted text-muted-foreground"
@@ -283,14 +454,14 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                         ))}
                     </div>
 
-                    {/* Navegação de mês */}
-                    {viewMode === "month" && (
+                    {/* Navegação de período */}
+                    {(viewMode === "month" || viewMode === "3months" || viewMode === "6months") && (
                         <div className="flex items-center gap-1 ml-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedMonth(prev => subMonths(prev, viewMode === "6months" ? 6 : viewMode === "3months" ? 3 : 1))}>
                                 <ChevronLeft className="h-4 w-4" />
                             </Button>
-                            <span className="text-sm font-medium min-w-[120px] text-center capitalize">{monthLabel}</span>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedMonth(prev => addMonths(prev, 1))}>
+                            <span className="text-sm font-medium min-w-[140px] text-center capitalize">{viewMode === "month" ? monthLabel : periodLabel}</span>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedMonth(prev => addMonths(prev, viewMode === "6months" ? 6 : viewMode === "3months" ? 3 : 1))}>
                                 <ChevronRight className="h-4 w-4" />
                             </Button>
                         </div>
@@ -317,46 +488,124 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                             </button>
                         ))}
                     </div>
+
+                    {/* Contagem de registros no filtro */}
+                    <span className="ml-auto text-xs text-muted-foreground">{tableContas.length} registro{tableContas.length !== 1 ? "s" : ""}</span>
+                </div>
+
+                {/* Tabs de Categoria */}
+                <div className="flex items-center gap-2 mt-2 pt-2 border-t flex-wrap">
+                    <span className="text-xs text-muted-foreground font-medium">Categoria:</span>
+                    <div className="flex rounded-lg border overflow-hidden">
+                        {([
+                            { value: "all", label: "Todas" },
+                            { value: "cmv", label: "CMV" },
+                            { value: "fixas", label: "Fixas" },
+                            { value: "frete", label: "Frete" },
+                            { value: "embalagem", label: "Embalagem" },
+                        ]).map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => setCategoryTab(opt.value)}
+                                className={`px-3 py-1.5 text-xs font-medium transition-colors ${categoryTab === opt.value
+                                    ? "bg-primary text-primary-foreground"
+                                    : "hover:bg-muted text-muted-foreground"
+                                    }`}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
+
+            {/* ── Cards de Período ── */}
+            {periodCards.length > 0 && (
+                <div className="grid gap-2"
+                    style={{
+                        gridTemplateColumns:
+                            viewMode === "week" ? "repeat(7, minmax(0, 1fr))" :
+                                viewMode === "3months" ? "repeat(3, minmax(0, 1fr))" :
+                                    viewMode === "6months" ? "repeat(6, minmax(0, 1fr))" :
+                                        "repeat(auto-fill, minmax(80px, 1fr))"
+                    }}
+                >
+                    {periodCards.map((card, i) => {
+                        const isSelectable = viewMode === "3months" || viewMode === "6months"
+                        const isSelected = isSelectable && selectedCardIndex === i
+                        return (
+                            <div
+                                key={i}
+                                onClick={isSelectable ? () => setSelectedCardIndex(i) : undefined}
+                                className={`rounded-xl border p-2 text-center transition-all ${isSelectable ? "cursor-pointer hover:ring-1 hover:ring-primary/30" : ""
+                                    } ${isSelected
+                                        ? "border-primary bg-primary/5 ring-2 ring-primary/40 shadow-sm"
+                                        : card.isToday
+                                            ? "border-primary/50 bg-primary/5"
+                                            : card.total > 0
+                                                ? "bg-red-500/5 border-red-500/20"
+                                                : "bg-muted/30 border-muted"
+                                    }`}
+                            >
+                                <p className={`text-[10px] font-semibold uppercase ${isSelected ? "text-primary" : card.isToday ? "text-primary" : "text-muted-foreground"
+                                    }`}>
+                                    {card.label}
+                                </p>
+                                <p className="text-[9px] text-muted-foreground">{card.sublabel}</p>
+                                {card.total > 0 ? (
+                                    <p className="text-xs font-bold text-red-500 mt-0.5">
+                                        {formatBRL(card.total)}
+                                    </p>
+                                ) : (
+                                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">—</p>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
 
             {/* ── Formulário Nova Despesa ── */}
             {showForm && (
                 <div className="rounded-xl border bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="bg-gradient-to-r from-red-500/10 to-orange-500/10 px-6 py-4 border-b">
                         <div className="flex items-center gap-2">
-                            <Receipt className="h-5 w-5 text-red-500" />
-                            <h3 className="font-semibold text-lg">Nova Despesa</h3>
+                            {editingConta ? <Pencil className="h-5 w-5 text-orange-500" /> : <Receipt className="h-5 w-5 text-red-500" />}
+                            <h3 className="font-semibold text-lg">{editingConta ? "Editar Despesa" : "Nova Despesa"}</h3>
                         </div>
-                        <p className="text-sm text-muted-foreground mt-0.5">Registre uma despesa única, recorrente ou parcelada</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                            {editingConta ? "Atualize os dados da despesa selecionada" : "Registre uma despesa única, recorrente ou parcelada"}
+                        </p>
                     </div>
                     <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                        {/* ── Recorrência ── */}
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium">Tipo de Lançamento</Label>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                {RECURRENCE_OPTIONS.map(opt => (
-                                    <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() => setRecurrence(opt.value)}
-                                        className={`relative flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition-all ${recurrence === opt.value
-                                            ? "border-primary bg-primary/5 shadow-sm"
-                                            : "border-muted hover:border-muted-foreground/30 hover:bg-muted/50"
-                                            }`}
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <span className={recurrence === opt.value ? "text-primary" : "text-muted-foreground"}>{opt.icon}</span>
-                                            <span className={`text-sm font-medium ${recurrence === opt.value ? "text-primary" : ""}`}>{opt.label}</span>
-                                        </div>
-                                        <span className="text-[11px] text-muted-foreground leading-tight">{opt.desc}</span>
-                                        {recurrence === opt.value && (
-                                            <div className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
-                                        )}
-                                    </button>
-                                ))}
+                        {/* ── Recorrência (só no modo criação) ── */}
+                        {!editingConta && (
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium">Tipo de Lançamento</Label>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                    {RECURRENCE_OPTIONS.map(opt => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => setRecurrence(opt.value)}
+                                            className={`relative flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition-all ${recurrence === opt.value
+                                                ? "border-primary bg-primary/5 shadow-sm"
+                                                : "border-muted hover:border-muted-foreground/30 hover:bg-muted/50"
+                                                }`}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span className={recurrence === opt.value ? "text-primary" : "text-muted-foreground"}>{opt.icon}</span>
+                                                <span className={`text-sm font-medium ${recurrence === opt.value ? "text-primary" : ""}`}>{opt.label}</span>
+                                            </div>
+                                            <span className="text-[11px] text-muted-foreground leading-tight">{opt.desc}</span>
+                                            {recurrence === opt.value && (
+                                                <div className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {/* Descrição */}
@@ -385,8 +634,8 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                                 <Input id="dt" type="date" value={date} onChange={e => setDate(e.target.value)} />
                             </div>
 
-                            {/* Ocorrências */}
-                            {recurrence !== "unique" && (
+                            {/* Ocorrências (só no modo criação) */}
+                            {!editingConta && recurrence !== "unique" && (
                                 <div className="space-y-1.5">
                                     <Label htmlFor="occ">
                                         {recurrence === "installment" ? "Número de Parcelas" : "Número de Ocorrências"}
@@ -456,9 +705,11 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                             <Button type="button" variant="outline" onClick={resetForm}>Cancelar</Button>
                             <Button type="submit" disabled={saving} className="gap-1.5">
                                 <CheckCircle className="h-4 w-4" />
-                                {saving ? "Salvando..." : recurrence === "unique"
-                                    ? (status === "paid" ? "Registrar como Paga" : "Cadastrar Despesa")
-                                    : `Criar ${recurrence === "installment" ? occurrences + " Parcelas" : occurrences + " Lançamentos"}`}
+                                {saving ? "Salvando..." : editingConta
+                                    ? "Salvar Alterações"
+                                    : recurrence === "unique"
+                                        ? (status === "paid" ? "Registrar como Paga" : "Cadastrar Despesa")
+                                        : `Criar ${recurrence === "installment" ? occurrences + " Parcelas" : occurrences + " Lançamentos"}`}
                             </Button>
                         </div>
                     </form>
@@ -466,7 +717,7 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
             )}
 
             {/* ── Lista ── */}
-            {filteredContas.length === 0 ? (
+            {tableContas.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground rounded-xl border bg-card">
                     <CheckCircle className="h-12 w-12 mx-auto mb-4 text-emerald-500" />
                     <p className="text-lg font-medium">Nenhuma conta pendente!</p>
@@ -490,10 +741,15 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredContas.map((conta) => (
+                            {tableContas.map((conta) => (
                                 <tr key={conta.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                                     <td className="px-4 py-3">
-                                        <div className="font-medium">{conta.description}</div>
+                                        <div className="font-medium flex items-center gap-2">
+                                            {conta.description}
+                                            {conta.description.startsWith("Compra de Mercadoria") && !conta.contaName && (
+                                                <Badge className="bg-purple-500/20 text-purple-600 border-purple-500/30 text-[10px] px-1.5 py-0">Revisar</Badge>
+                                            )}
+                                        </div>
                                         {conta.supplierName && (
                                             <div className="text-xs text-muted-foreground">{conta.supplierName}</div>
                                         )}
@@ -512,6 +768,10 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                                     <td className="px-4 py-3 text-sm text-muted-foreground">{conta.categoryName || "—"}</td>
                                     <td className="px-4 py-3 text-right">
                                         <div className="flex justify-end gap-1">
+                                            <Button size="sm" variant="ghost" onClick={() => openEditForm(conta)}
+                                                className="h-8 w-8 p-0 text-muted-foreground hover:text-blue-600">
+                                                <Pencil className="h-3.5 w-3.5" />
+                                            </Button>
                                             <Button size="sm" variant="outline" onClick={() => openPayDialog(conta)}
                                                 disabled={loading === conta.id} className="gap-1 text-xs">
                                                 <CheckCircle className="h-3.5 w-3.5" />
@@ -567,8 +827,8 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                                             type="button"
                                             onClick={() => setPayContaFinanceiraId(cf.id)}
                                             className={`flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all ${payContaFinanceiraId === cf.id
-                                                    ? "border-primary bg-primary/5 shadow-sm"
-                                                    : "border-muted hover:border-muted-foreground/30"
+                                                ? "border-primary bg-primary/5 shadow-sm"
+                                                : "border-muted hover:border-muted-foreground/30"
                                                 }`}
                                         >
                                             <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${payContaFinanceiraId === cf.id ? "bg-primary/10" : "bg-muted"
@@ -610,6 +870,55 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                                     {loading === payingConta.id ? "Processando..." : "Confirmar Pagamento"}
                                 </Button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Popup Tarefas Pendentes ── */}
+            {showPendentes && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowPendentes(false)} />
+                    <div className="relative bg-card rounded-xl border shadow-2xl w-full max-w-lg mx-4 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 px-6 py-4 rounded-t-xl border-b">
+                            <div className="flex items-center gap-2">
+                                <ClipboardList className="h-5 w-5 text-purple-600" />
+                                <h3 className="font-semibold text-lg">Tarefas Pendentes</h3>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-0.5">Despesas que precisam de revisão</p>
+                        </div>
+                        <div className="p-4 max-h-[400px] overflow-y-auto space-y-2">
+                            {pendentes.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <CheckCircle className="h-10 w-10 mx-auto mb-3 text-emerald-500" />
+                                    <p className="font-medium">Tudo em dia!</p>
+                                    <p className="text-sm">Nenhuma despesa pendente de revisão.</p>
+                                </div>
+                            ) : (
+                                pendentes.map(conta => (
+                                    <div key={conta.id} className="rounded-lg border p-3 hover:bg-muted/30 transition-colors">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-medium text-sm truncate">{conta.description}</p>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="text-sm font-semibold text-red-500">{formatBRL(conta.amount)}</span>
+                                                    <span className="text-xs text-muted-foreground">Venc: {format(new Date(conta.date + "T12:00:00"), "dd/MM/yyyy")}</span>
+                                                </div>
+                                                {conta.supplierName && (
+                                                    <p className="text-xs text-muted-foreground mt-0.5">{conta.supplierName}</p>
+                                                )}
+                                            </div>
+                                            <Button size="sm" variant="outline" className="gap-1 text-xs shrink-0"
+                                                onClick={() => { setShowPendentes(false); openEditForm(conta) }}>
+                                                <Pencil className="h-3 w-3" /> Editar
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <div className="px-6 py-3 border-t flex justify-end">
+                            <Button variant="outline" onClick={() => setShowPendentes(false)}>Fechar</Button>
                         </div>
                     </div>
                 </div>

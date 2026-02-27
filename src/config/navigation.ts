@@ -11,6 +11,7 @@ import {
     Plug,
     Calendar,
     BellRing,
+    Truck,
     LucideIcon
 } from "lucide-react"
 
@@ -61,7 +62,8 @@ export const navigationRoutes: NavRoute[] = [
             { name: "Resumo", href: "/dashboard/financeiro" },
             { name: "Contas a Pagar", href: "/dashboard/financeiro/contas-pagar" },
             { name: "Contas a Receber", href: "/dashboard/financeiro/contas-receber" },
-            { name: "Transações", href: "/dashboard/financeiro/transacoes" },
+            { name: "Receitas", href: "/dashboard/financeiro/receitas" },
+            { name: "Despesas Pagas", href: "/dashboard/financeiro/despesas" },
             { name: "Contas Bancárias", href: "/dashboard/financeiro/contas" },
             { name: "Maquininhas", href: "/dashboard/financeiro/maquininhas" },
             { name: "Plano de Contas", href: "/dashboard/financeiro/categorias" },
@@ -95,6 +97,17 @@ export const navigationRoutes: NavRoute[] = [
         items: [
             { name: "Produtos", href: "/dashboard/cadastros/produtos" },
             { name: "Entrada de Mercadorias", href: "/dashboard/estoque/entrada" },
+        ],
+    },
+    {
+        label: "Logística",
+        icon: Truck,
+        href: "/dashboard/logistica",
+        roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
+        items: [
+            { name: "Dashboard", href: "/dashboard/logistica" },
+            { name: "Pedidos", href: "/dashboard/logistica/pedidos" },
+            { name: "Envios", href: "/dashboard/logistica/envios" },
         ],
     },
     {

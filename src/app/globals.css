@@ -170,6 +170,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -177,6 +178,7 @@
 
 /* ─── Global Smooth Transitions ─── */
 @layer base {
+
   *,
   *::before,
   *::after {
@@ -192,19 +194,24 @@
     width: 6px;
     height: 6px;
   }
+
   ::-webkit-scrollbar-track {
     background: transparent;
   }
+
   ::-webkit-scrollbar-thumb {
     background: oklch(0.7 0.01 250 / 40%);
     border-radius: 9999px;
   }
+
   ::-webkit-scrollbar-thumb:hover {
     background: oklch(0.5 0.02 250 / 60%);
   }
+
   .dark ::-webkit-scrollbar-thumb {
     background: oklch(0.4 0.02 255 / 40%);
   }
+
   .dark ::-webkit-scrollbar-thumb:hover {
     background: oklch(0.5 0.02 255 / 60%);
   }
@@ -214,16 +221,18 @@
 @layer utilities {
   .card-hover {
     transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
-                box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1);
   }
+
   .card-hover:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 25px -5px oklch(0.5 0.18 255 / 10%),
-                0 4px 10px -3px oklch(0 0 0 / 8%);
+      0 4px 10px -3px oklch(0 0 0 / 8%);
   }
+
   .dark .card-hover:hover {
     box-shadow: 0 8px 25px -5px oklch(0.65 0.20 255 / 15%),
-                0 4px 10px -3px oklch(0 0 0 / 30%);
+      0 4px 10px -3px oklch(0 0 0 / 30%);
   }
 }
 
@@ -234,6 +243,7 @@
     backdrop-filter: blur(12px) saturate(180%);
     -webkit-backdrop-filter: blur(12px) saturate(180%);
   }
+
   .dark .glass {
     background: oklch(0.19 0.025 258 / 70%);
   }
@@ -244,12 +254,15 @@
   .gradient-primary {
     background: linear-gradient(135deg, oklch(0.50 0.18 255), oklch(0.58 0.20 270));
   }
+
   .gradient-success {
     background: linear-gradient(135deg, oklch(0.62 0.19 155), oklch(0.68 0.17 165));
   }
+
   .gradient-warning {
     background: linear-gradient(135deg, oklch(0.78 0.16 75), oklch(0.82 0.14 65));
   }
+
   .gradient-destructive {
     background: linear-gradient(135deg, oklch(0.58 0.22 25), oklch(0.55 0.24 15));
   }
@@ -257,8 +270,15 @@
 
 /* ─── Pulse Animation ─── */
 @keyframes pulse-soft {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
 }
 
 @layer utilities {
@@ -269,24 +289,30 @@
 
 /* ─── Skeleton Loading ─── */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 @layer utilities {
   .skeleton {
-    background: linear-gradient(90deg, 
-      oklch(0.92 0.01 250) 25%, 
-      oklch(0.96 0.008 250) 50%, 
-      oklch(0.92 0.01 250) 75%);
+    background: linear-gradient(90deg,
+        oklch(0.92 0.01 250) 25%,
+        oklch(0.96 0.008 250) 50%,
+        oklch(0.92 0.01 250) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
   }
+
   .dark .skeleton {
-    background: linear-gradient(90deg, 
-      oklch(0.24 0.025 258) 25%, 
-      oklch(0.28 0.03 258) 50%, 
-      oklch(0.24 0.025 258) 75%);
+    background: linear-gradient(90deg,
+        oklch(0.24 0.025 258) 25%,
+        oklch(0.28 0.03 258) 50%,
+        oklch(0.24 0.025 258) 75%);
     background-size: 200% 100%;
   }
 }

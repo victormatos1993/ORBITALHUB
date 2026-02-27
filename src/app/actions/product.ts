@@ -8,6 +8,8 @@ import { getTenantInfo } from "@/lib/auth-utils"
 
 export interface ProductFilters {
     search?: string
+    productType?: string
+    availableForSale?: boolean
     page?: number
     pageSize?: number
 }
@@ -18,6 +20,14 @@ export async function getProducts(filters?: ProductFilters) {
 
     try {
         const where: any = { userId: tenantId }
+
+        if (filters?.productType) {
+            where.productType = filters.productType
+        }
+
+        if (filters?.availableForSale !== undefined) {
+            where.availableForSale = filters.availableForSale
+        }
 
         if (filters?.search) {
             where.OR = [
@@ -44,6 +54,9 @@ export async function getProducts(filters?: ProductFilters) {
             ...product,
             price: product.price.toNumber(),
             averageCost: (product as any).averageCost ? Number((product as any).averageCost) : 0,
+            productType: (product as any).productType || "VENDA",
+            department: (product as any).department || null,
+            availableForSale: (product as any).availableForSale ?? false,
         }))
 
         return {
@@ -71,6 +84,9 @@ export async function getProduct(id: string) {
             ...product,
             price: product.price.toNumber(),
             averageCost: (product as any).averageCost ? Number((product as any).averageCost) : 0,
+            productType: (product as any).productType || "VENDA",
+            department: (product as any).department || null,
+            availableForSale: (product as any).availableForSale ?? false,
         }
     } catch (error) {
         console.error("Erro ao buscar produto:", error)
@@ -87,6 +103,9 @@ export async function createProduct(data: {
     ncm?: string | null
     sku?: string | null
     category?: string | null
+    productType?: string
+    department?: string | null
+    availableForSale?: boolean
 }) {
     const { userId, tenantId } = await getTenantInfo()
 
@@ -104,6 +123,9 @@ export async function createProduct(data: {
                 manageStock: data.manageStock ?? true,
                 ncm: data.ncm || null,
                 sku: data.sku || null,
+                productType: data.productType || "VENDA",
+                department: data.department || null,
+                availableForSale: data.availableForSale ?? false,
                 userId: tenantId,
                 createdById: userId || null,
             }
@@ -125,6 +147,9 @@ export async function updateProduct(id: string, data: {
     manageStock?: boolean
     ncm?: string | null
     sku?: string | null
+    productType?: string
+    department?: string | null
+    availableForSale?: boolean
 }) {
     const { tenantId } = await getTenantInfo()
     if (!tenantId) return { error: "Não autorizado" }
@@ -138,6 +163,10 @@ export async function updateProduct(id: string, data: {
             return { error: "Produto não encontrado" }
         }
 
+        const oldType = (product as any).productType || "VENDA"
+        const newType = data.productType || "VENDA"
+        const isBecomingInternal = oldType === "VENDA" && newType === "INTERNO"
+
         await prisma.product.update({
             where: { id },
             data: {
@@ -147,12 +176,107 @@ export async function updateProduct(id: string, data: {
                 stockQuantity: data.stockQuantity,
                 manageStock: data.manageStock ?? true,
                 ncm: data.ncm || null,
-                sku: data.sku || null
+                sku: data.sku || null,
+                productType: newType,
+                department: data.department || null,
+                availableForSale: newType === "INTERNO" ? false : (data.availableForSale ?? false),
+                // Zerar custo médio se virou interno (não é mais para revenda)
+                ...(isBecomingInternal ? { averageCost: 0 } : {}),
             }
         })
 
+        // ── Migrar CMV → Despesa Operacional se mudou VENDA → INTERNO ──
+        if (isBecomingInternal) {
+            const department = data.department || "ADMINISTRATIVO"
+
+            // Mapear departamento → código de categoria operacional
+            const categoryMap: Record<string, { code: string; name: string }> = {
+                LOGISTICA: { code: "2.4", name: "Frete" },
+                ADMINISTRATIVO: { code: "3", name: "Despesas Fixas / Operacionais" },
+                MANUTENCAO: { code: "3", name: "Despesas Fixas / Operacionais" },
+            }
+            const target = categoryMap[department] || categoryMap.ADMINISTRATIVO
+
+            // Buscar categoria destino
+            let destCategory = await prisma.category.findFirst({
+                where: { userId: tenantId, code: target.code, isSystem: true },
+            })
+            if (!destCategory) {
+                destCategory = await prisma.category.findFirst({
+                    where: { userId: tenantId, code: target.code },
+                })
+            }
+
+            if (destCategory) {
+                // Buscar todas as vendas que contêm este produto
+                const saleItems = await prisma.saleItem.findMany({
+                    where: { productId: id },
+                    select: { saleId: true },
+                })
+                const saleIds = [...new Set(saleItems.map(si => si.saleId))]
+
+                if (saleIds.length > 0) {
+                    // Buscar categoria CMV
+                    const cmvCategory = await prisma.category.findFirst({
+                        where: { userId: tenantId, code: "2.1", isSystem: true },
+                    })
+
+                    if (cmvCategory) {
+                        // Migrar transações CMV deste produto para a categoria operacional
+                        const result = await prisma.transaction.updateMany({
+                            where: {
+                                userId: tenantId,
+                                saleId: { in: saleIds },
+                                categoryId: cmvCategory.id,
+                                description: { contains: product.name },
+                            },
+                            data: {
+                                categoryId: destCategory.id,
+                            },
+                        })
+
+                        if (result.count > 0) {
+                            console.log(`✅ Migradas ${result.count} transações CMV de "${product.name}" para "${target.name}" (${target.code})`)
+                        }
+                    }
+                }
+
+                // Migrar transações de compra (NF entrada) também
+                const stockEntries = await prisma.stockEntry.findMany({
+                    where: { productId: id },
+                    select: { purchaseInvoiceId: true },
+                })
+                const invoiceIds = [...new Set(stockEntries.map(se => se.purchaseInvoiceId))]
+
+                if (invoiceIds.length > 0) {
+                    const cmvCategory = await prisma.category.findFirst({
+                        where: { userId: tenantId, code: "2.1", isSystem: true },
+                    })
+
+                    if (cmvCategory) {
+                        const result = await prisma.transaction.updateMany({
+                            where: {
+                                userId: tenantId,
+                                purchaseInvoiceId: { in: invoiceIds },
+                                categoryId: cmvCategory.id,
+                            },
+                            data: {
+                                categoryId: destCategory.id,
+                            },
+                        })
+
+                        if (result.count > 0) {
+                            console.log(`✅ Migradas ${result.count} transações de compra de "${product.name}" para "${target.name}" (${target.code})`)
+                        }
+                    }
+                }
+            }
+        }
+
         revalidatePath("/dashboard/cadastros/produtos")
         revalidatePath(`/dashboard/cadastros/produtos/${id}`)
+        revalidatePath("/dashboard/financeiro/transacoes")
+        revalidatePath("/dashboard/financeiro/contas-pagar")
         return { success: true }
     } catch (error) {
         console.error("Erro ao atualizar produto:", error)

@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { MoreHorizontal, Pencil, Trash } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
     DropdownMenu,
@@ -25,6 +26,9 @@ export type Product = {
     manageStock: boolean
     ncm: string | null
     sku: string | null
+    productType: string
+    department: string | null
+    availableForSale: boolean
     createdAt: Date
     updatedAt: Date
 }
@@ -77,8 +81,42 @@ const ActionsCell = ({ product }: { product: Product }) => {
     )
 }
 
+/** Badge de status do produto */
+function StatusBadge({ product }: { product: Product }) {
+    // Sem estoque (prioridade: se zerou por vendas)
+    if (product.manageStock && product.stockQuantity === 0) {
+        return (
+            <Badge className="bg-red-500/15 text-red-600 border-red-500/30 text-[10px] px-1.5 py-0 hover:bg-red-500/15">
+                Sem estoque
+            </Badge>
+        )
+    }
+    // Ativo para venda
+    if (product.availableForSale) {
+        return (
+            <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] px-1.5 py-0 hover:bg-emerald-500/15">
+                Ativo
+            </Badge>
+        )
+    }
+    // Desativado
+    return (
+        <Badge className="bg-yellow-500/15 text-yellow-600 border-yellow-500/30 text-[10px] px-1.5 py-0 hover:bg-yellow-500/15">
+            Desativado
+        </Badge>
+    )
+}
+
 export const columns: ColumnDef<Product>[] = [
-    { accessorKey: "name", header: "Nome" },
+    {
+        accessorKey: "name",
+        header: "Nome",
+        cell: ({ row }) => (
+            <div className="flex items-center gap-2">
+                <span>{row.getValue("name") as string}</span>
+            </div>
+        ),
+    },
     { accessorKey: "sku", header: "SKU", cell: ({ row }) => row.getValue("sku") || "-" },
     { accessorKey: "stockQuantity", header: "Estoque" },
     {
@@ -87,29 +125,9 @@ export const columns: ColumnDef<Product>[] = [
         cell: ({ row }) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(row.getValue("price"))),
     },
     {
-        accessorKey: "averageCost",
-        header: "Custo Médio",
-        cell: ({ row }) => {
-            const cost = Number(row.original.averageCost)
-            return cost > 0
-                ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cost)
-                : "—"
-        },
-    },
-    {
-        id: "margin",
-        header: "Margem",
-        cell: ({ row }) => {
-            const price = Number(row.original.price)
-            const cost = Number(row.original.averageCost)
-            if (cost <= 0 || price <= 0) return "—"
-            const margin = ((price - cost) / price) * 100
-            return (
-                <span className={margin >= 0 ? "text-emerald-500 font-medium" : "text-red-500 font-medium"}>
-                    {margin.toFixed(1)}%
-                </span>
-            )
-        },
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => <StatusBadge product={row.original} />,
     },
     { accessorKey: "ncm", header: "NCM", cell: ({ row }) => row.getValue("ncm") || "-" },
     { id: "actions", cell: ({ row }) => <ActionsCell product={row.original} /> },

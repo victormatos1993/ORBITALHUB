@@ -807,16 +807,16 @@ export function EntradaMercadoriasClient({ products, suppliers, invoices: initia
                                         </Button>
                                     </div>
                                     {otherCostsList.map((oc, idx) => (
-                                        <div key={oc.id} className="grid grid-cols-12 gap-2 items-center">
-                                            <div className="col-span-6">
+                                        <div key={oc.id} className="flex gap-2 items-center">
+                                            <div className="flex-1 min-w-0">
                                                 <Input placeholder="Descrição do custo"
-                                                    className="rounded-xl text-sm h-8"
+                                                    className="rounded-xl text-sm h-8 w-full"
                                                     value={oc.description}
                                                     onChange={e => setOtherCostsList(prev =>
                                                         prev.map(c => c.id === oc.id ? { ...c, description: e.target.value } : c)
                                                     )} />
                                             </div>
-                                            <div className="col-span-5">
+                                            <div className="w-[140px] shrink-0">
                                                 <CurrencyInput placeholder="R$ 0,00" decimalsLimit={2}
                                                     onValueChange={v => setOtherCostsList(prev =>
                                                         prev.map(c => c.id === oc.id ? { ...c, value: v ? parseFloat(v.replace(",", ".")) : 0 } : c)
@@ -825,13 +825,11 @@ export function EntradaMercadoriasClient({ products, suppliers, invoices: initia
                                                     className="flex h-8 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                                 />
                                             </div>
-                                            <div className="col-span-1">
-                                                <Button variant="ghost" size="sm"
-                                                    className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                                                    onClick={() => setOtherCostsList(prev => prev.filter(c => c.id !== oc.id))}>
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </div>
+                                            <Button variant="ghost" size="sm"
+                                                className="h-7 w-7 p-0 shrink-0 text-destructive hover:text-destructive"
+                                                onClick={() => setOtherCostsList(prev => prev.filter(c => c.id !== oc.id))}>
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
                                         </div>
                                     ))}
                                     {otherCostsList.length === 0 && (

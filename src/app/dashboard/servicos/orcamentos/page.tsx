@@ -1,7 +1,12 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { toast } from "sonner"
+import {
+    format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
+    isWithinInterval, addMonths, subMonths, eachDayOfInterval, isSameDay
+} from "date-fns"
+import { ptBR } from "date-fns/locale"
 import {
     FileText,
     Plus,
@@ -22,6 +27,12 @@ import {
     Mail,
     Phone,
     Printer,
+    Calendar,
+    CalendarDays,
+    List,
+    Filter,
+    ChevronLeft,
+    ChevronRight,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -152,6 +163,17 @@ export default function OrcamentosPage() {
     const [search, setSearch] = useState("")
     const [showExpired, setShowExpired] = useState(false)
 
+    // Period filter state
+    type ViewMode = "all" | "month" | "week" | "today" | "3months" | "6months"
+    const [viewMode, setViewMode] = useState<ViewMode>("all")
+    const [selectedMonth, setSelectedMonth] = useState(new Date())
+    const [selectedCardIndex, setSelectedCardIndex] = useState(0)
+
+    const handleViewModeChange = (mode: ViewMode) => {
+        setViewMode(mode)
+        setSelectedCardIndex(0)
+    }
+
     // QuoteModal (avulso)
     const [quoteModalOpen, setQuoteModalOpen] = useState(false)
     const [initialClientName, setInitialClientName] = useState("")
@@ -210,10 +232,86 @@ export default function OrcamentosPage() {
     const activeQuotes = quotes.filter(q => q.status !== "EXPIRED")
     const expiredQuotes = quotes.filter(q => q.status === "EXPIRED")
     const displayedQuotes = showExpired ? expiredQuotes : activeQuotes
-    const filteredQuotes = displayedQuotes.filter(q =>
+
+    const getQuoteDate = (q: QuoteData): string => {
+        const d = typeof q.createdAt === "string" ? q.createdAt : (q.createdAt as Date).toISOString()
+        return d.split("T")[0]
+    }
+
+    const getDateRange = useMemo(() => {
+        if (viewMode === "month") return { start: startOfMonth(selectedMonth), end: endOfMonth(selectedMonth) }
+        if (viewMode === "week") return { start: startOfWeek(new Date(), { weekStartsOn: 1 }), end: endOfWeek(new Date(), { weekStartsOn: 1 }) }
+        if (viewMode === "3months") { const s = startOfMonth(selectedMonth); return { start: s, end: endOfMonth(addMonths(s, 2)) } }
+        if (viewMode === "6months") { const s = startOfMonth(selectedMonth); return { start: s, end: endOfMonth(addMonths(s, 5)) } }
+        return null
+    }, [viewMode, selectedMonth])
+
+    const dateFilteredQuotes = useMemo(() => {
+        let result = [...displayedQuotes]
+        if (viewMode === "today") {
+            const today = format(new Date(), "yyyy-MM-dd")
+            result = result.filter(q => getQuoteDate(q) === today)
+        } else if (getDateRange) {
+            result = result.filter(q => {
+                const d = new Date(getQuoteDate(q) + "T12:00:00")
+                return isWithinInterval(d, getDateRange)
+            })
+        }
+        return result
+    }, [displayedQuotes, viewMode, selectedMonth, getDateRange])
+
+    const filteredQuotes = dateFilteredQuotes.filter(q =>
         q.clientName.toLowerCase().includes(search.toLowerCase()) ||
         String(q.number).includes(search)
     )
+
+    const tableQuotes = useMemo(() => {
+        if (viewMode !== "3months" && viewMode !== "6months") return filteredQuotes
+        const cardMonth = addMonths(startOfMonth(selectedMonth), selectedCardIndex)
+        const mStart = startOfMonth(cardMonth)
+        const mEnd = endOfMonth(cardMonth)
+        return filteredQuotes.filter(q => {
+            const d = new Date(getQuoteDate(q) + "T12:00:00")
+            return isWithinInterval(d, { start: mStart, end: mEnd })
+        })
+    }, [filteredQuotes, viewMode, selectedMonth, selectedCardIndex])
+
+    const periodCards = useMemo(() => {
+        if (viewMode === "today" || viewMode === "all") return []
+        if (viewMode === "week" && getDateRange) {
+            return eachDayOfInterval(getDateRange).map(day => {
+                const dayStr = format(day, "yyyy-MM-dd")
+                const items = filteredQuotes.filter(q => getQuoteDate(q) === dayStr)
+                return { label: format(day, "EEE", { locale: ptBR }), sublabel: format(day, "dd/MM"), count: items.length, total: items.reduce((s, q) => s + q.totalAmount, 0), isToday: isSameDay(day, new Date()) }
+            })
+        }
+        if (viewMode === "month" && getDateRange) {
+            return eachDayOfInterval(getDateRange).map(day => {
+                const dayStr = format(day, "yyyy-MM-dd")
+                const items = filteredQuotes.filter(q => getQuoteDate(q) === dayStr)
+                return { label: format(day, "dd"), sublabel: format(day, "EEE", { locale: ptBR }), count: items.length, total: items.reduce((s, q) => s + q.totalAmount, 0), isToday: isSameDay(day, new Date()) }
+            })
+        }
+        if ((viewMode === "3months" || viewMode === "6months") && getDateRange) {
+            const n = viewMode === "3months" ? 3 : 6
+            return Array.from({ length: n }, (_, i) => {
+                const md = addMonths(startOfMonth(selectedMonth), i)
+                const mS = startOfMonth(md), mE = endOfMonth(md)
+                const items = filteredQuotes.filter(q => { const d = new Date(getQuoteDate(q) + "T12:00:00"); return isWithinInterval(d, { start: mS, end: mE }) })
+                return { label: format(md, "MMM", { locale: ptBR }), sublabel: format(md, "yyyy"), count: items.length, total: items.reduce((s, q) => s + q.totalAmount, 0), isToday: isSameDay(startOfMonth(new Date()), mS) }
+            })
+        }
+        return []
+    }, [viewMode, getDateRange, filteredQuotes, selectedMonth])
+
+    const monthLabel = format(selectedMonth, "MMMM yyyy", { locale: ptBR })
+    const periodLabel = useMemo(() => {
+        if (viewMode === "3months") return `${format(selectedMonth, "MMM/yy", { locale: ptBR })} — ${format(addMonths(selectedMonth, 2), "MMM/yy", { locale: ptBR })}`
+        if (viewMode === "6months") return `${format(selectedMonth, "MMM/yy", { locale: ptBR })} — ${format(addMonths(selectedMonth, 5), "MMM/yy", { locale: ptBR })}`
+        return monthLabel
+    }, [viewMode, selectedMonth, monthLabel])
+
+    const displayQuotes = (viewMode === "3months" || viewMode === "6months") ? tableQuotes : filteredQuotes
 
     const handleStatusChange = async (quoteId: string, status: string) => {
         const res = await updateQuoteStatus(quoteId, status)
@@ -288,28 +386,107 @@ export default function OrcamentosPage() {
                 </div>
             </div>
 
-            {/* Search */}
-            <div className="flex items-center gap-3">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Buscar por nome do cliente ou número..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="pl-10 rounded-xl"
-                    />
+            {/* Period Filter Bar */}
+            <div className="rounded-xl border bg-card px-4 py-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <Filter className="h-4 w-4" />
+                        <span className="font-medium">Período:</span>
+                    </div>
+
+                    <div className="flex rounded-lg border overflow-hidden">
+                        {([
+                            { value: "today" as ViewMode, label: "Hoje", icon: <Calendar className="h-3.5 w-3.5" /> },
+                            { value: "week" as ViewMode, label: "Semana", icon: <CalendarDays className="h-3.5 w-3.5" /> },
+                            { value: "month" as ViewMode, label: "Mês", icon: <CalendarDays className="h-3.5 w-3.5" /> },
+                            { value: "3months" as ViewMode, label: "3 Meses", icon: <CalendarDays className="h-3.5 w-3.5" /> },
+                            { value: "6months" as ViewMode, label: "6 Meses", icon: <CalendarDays className="h-3.5 w-3.5" /> },
+                            { value: "all" as ViewMode, label: "Tudo", icon: <List className="h-3.5 w-3.5" /> },
+                        ]).map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => handleViewModeChange(opt.value)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === opt.value ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+                            >
+                                {opt.icon} {opt.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {(viewMode === "month" || viewMode === "3months" || viewMode === "6months") && (
+                        <div className="flex items-center gap-1 ml-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedMonth(prev => subMonths(prev, viewMode === "6months" ? 6 : viewMode === "3months" ? 3 : 1))}>
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <span className="text-sm font-medium min-w-[140px] text-center capitalize">{viewMode === "month" ? monthLabel : periodLabel}</span>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedMonth(prev => addMonths(prev, viewMode === "6months" ? 6 : viewMode === "3months" ? 3 : 1))}>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    )}
+
+                    <div className="h-5 w-px bg-border mx-1 hidden sm:block" />
+
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                            placeholder="Buscar cliente ou número..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="pl-8 h-8 w-56 text-xs"
+                        />
+                    </div>
+
+                    <Badge variant="secondary" className="rounded-lg px-3 py-1.5 text-xs whitespace-nowrap">
+                        {filteredQuotes.length} orçamento{filteredQuotes.length !== 1 ? "s" : ""}
+                    </Badge>
                 </div>
-                <Badge variant="secondary" className="rounded-lg px-3 py-1.5 text-xs whitespace-nowrap">
-                    {filteredQuotes.length} orçamento{filteredQuotes.length !== 1 ? "s" : ""}
-                </Badge>
             </div>
+
+            {/* Period Cards */}
+            {periodCards.length > 0 && (
+                <div className="grid gap-2"
+                    style={{
+                        gridTemplateColumns:
+                            viewMode === "week" ? "repeat(7, minmax(0, 1fr))" :
+                                viewMode === "3months" ? "repeat(3, minmax(0, 1fr))" :
+                                    viewMode === "6months" ? "repeat(6, minmax(0, 1fr))" :
+                                        "repeat(auto-fill, minmax(80px, 1fr))"
+                    }}
+                >
+                    {periodCards.map((card, i) => {
+                        const isSelectable = viewMode === "3months" || viewMode === "6months"
+                        const isSelected = isSelectable && selectedCardIndex === i
+                        return (
+                            <div
+                                key={i}
+                                onClick={isSelectable ? () => setSelectedCardIndex(i) : undefined}
+                                className={`rounded-xl border p-2 text-center transition-all ${isSelectable ? "cursor-pointer hover:ring-1 hover:ring-primary/30" : ""} ${isSelected
+                                        ? "border-primary bg-primary/5 ring-2 ring-primary/40 shadow-sm"
+                                        : card.isToday ? "border-primary/50 bg-primary/5"
+                                            : card.count > 0 ? "bg-primary/5 border-primary/20"
+                                                : "bg-muted/30 border-muted"
+                                    }`}
+                            >
+                                <p className={`text-[10px] font-semibold uppercase ${isSelected || card.isToday ? "text-primary" : "text-muted-foreground"}`}>{card.label}</p>
+                                <p className="text-[9px] text-muted-foreground">{card.sublabel}</p>
+                                {card.count > 0 ? (
+                                    <p className="text-xs font-bold text-primary mt-0.5">{card.count} orç.</p>
+                                ) : (
+                                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">—</p>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
 
             {/* Cards Grid */}
             {loading ? (
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-            ) : filteredQuotes.length === 0 ? (
+            ) : displayQuotes.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 rounded-2xl border bg-card">
                     <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mb-4">
                         {showExpired ? <AlertTriangle className="h-8 w-8 text-amber-500" /> : <FileText className="h-8 w-8 text-primary" />}
@@ -331,7 +508,7 @@ export default function OrcamentosPage() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {filteredQuotes.map(quote => {
+                    {displayQuotes.map(quote => {
                         const days = daysUntil(quote.validUntil)
                         const isUrgent = days !== null && days <= 3 && days >= 0
                         const isExpired = quote.status === "EXPIRED"

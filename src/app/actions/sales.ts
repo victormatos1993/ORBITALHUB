@@ -447,12 +447,26 @@ export async function processSale(tenantId: string, userId: string | null, data:
                     }
                 })
             }
+
+            // ── Criar ShipmentOrder automaticamente se venda tem frete ──
+            if ((data.shippingCost && data.shippingCost > 0) || carrierId) {
+                await tx.shipmentOrder.create({
+                    data: {
+                        saleId: sale.id,
+                        userId: tenantId,
+                        carrierId: carrierId || null,
+                        shippingCost: data.shippingCost || null,
+                        status: "PENDENTE",
+                    }
+                })
+            }
         })
 
         revalidatePath("/dashboard/vendas")
         revalidatePath("/dashboard/financeiro/transacoes")
         revalidatePath("/dashboard/financeiro/contas-receber")
         revalidatePath("/dashboard/cadastros/produtos")
+        revalidatePath("/dashboard/logistica")
 
         // Se a venda veio de um agendamento, baixa tudo relacionado ao evento
         // IMPORTANTE: deleta a transação original do agendamento para evitar duplicidade
@@ -598,6 +612,11 @@ export async function deleteSale(id: string) {
                 where: { saleId: id }
             })
 
+            // Deletar envio se existir
+            await tx.shipmentOrder.deleteMany({
+                where: { saleId: id }
+            })
+
             await tx.sale.delete({
                 where: { id }
             })
@@ -606,6 +625,7 @@ export async function deleteSale(id: string) {
         revalidatePath("/dashboard/vendas")
         revalidatePath("/dashboard/financeiro/transacoes")
         revalidatePath("/dashboard/cadastros/produtos")
+        revalidatePath("/dashboard/logistica")
 
         return { success: true }
     } catch (error) {

@@ -5,12 +5,13 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Package, CheckCircle2, Loader2 } from "lucide-react"
+import { Package, CheckCircle2, Loader2, ShoppingBag, Wrench } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
 import {
     Dialog,
     DialogContent,
@@ -28,6 +29,13 @@ import {
     FormMessage,
 } from "@/components/ui/form"
 import CurrencyInput from "react-currency-input-field"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 import { createProduct, updateProduct } from "@/app/actions/product"
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
@@ -40,6 +48,9 @@ const schema = z.object({
     manageStock: z.boolean().default(true),
     ncm: z.string().optional().or(z.literal("")),
     sku: z.string().optional().or(z.literal("")),
+    productType: z.string().default("VENDA"),
+    department: z.string().optional().or(z.literal("")),
+    availableForSale: z.boolean().default(false),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -59,6 +70,9 @@ export interface ProductModalProps {
         manageStock: boolean
         ncm?: string | null
         sku?: string | null
+        productType?: string
+        department?: string | null
+        availableForSale?: boolean
     } | null
     /** Chamado após salvar com sucesso */
     onSaved?: () => void
@@ -80,6 +94,9 @@ export function ProductModal({ open, onOpenChange, editingProduct, onSaved }: Pr
             manageStock: true,
             ncm: "",
             sku: "",
+            productType: "VENDA",
+            department: "",
+            availableForSale: false,
         },
     })
 
@@ -95,11 +112,16 @@ export function ProductModal({ open, onOpenChange, editingProduct, onSaved }: Pr
                     manageStock: editingProduct.manageStock,
                     ncm: editingProduct.ncm || "",
                     sku: editingProduct.sku || "",
+                    productType: editingProduct.productType || "VENDA",
+                    department: editingProduct.department || "",
+                    availableForSale: editingProduct.availableForSale ?? false,
                 })
             } else {
                 form.reset({
                     name: "", description: "", price: 0, stockQuantity: 0,
                     manageStock: true, ncm: "", sku: "",
+                    productType: "VENDA", department: "",
+                    availableForSale: false,
                 })
             }
         }
@@ -113,8 +135,12 @@ export function ProductModal({ open, onOpenChange, editingProduct, onSaved }: Pr
                 description: data.description || null,
                 price: data.price,
                 stockQuantity: data.stockQuantity,
+                manageStock: data.manageStock,
                 ncm: data.ncm || null,
                 sku: data.sku || null,
+                productType: data.productType || "VENDA",
+                department: data.productType === "INTERNO" ? (data.department || null) : null,
+                availableForSale: data.productType === "VENDA" ? data.availableForSale : false,
             }
 
             if (isEditing && editingProduct) {
@@ -145,6 +171,8 @@ export function ProductModal({ open, onOpenChange, editingProduct, onSaved }: Pr
     }
 
     const watchManageStock = form.watch("manageStock")
+    const watchProductType = form.watch("productType")
+    const watchAvailable = form.watch("availableForSale")
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -167,6 +195,71 @@ export function ProductModal({ open, onOpenChange, editingProduct, onSaved }: Pr
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-0">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+                            {/* Tipo de Produto */}
+                            <FormField
+                                control={form.control}
+                                name="productType"
+                                render={({ field }) => (
+                                    <FormItem className="col-span-2">
+                                        <FormLabel>Tipo de Produto</FormLabel>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => { field.onChange("VENDA"); form.setValue("department", "") }}
+                                                className={`flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-all ${field.value === "VENDA"
+                                                    ? "border-primary bg-primary/5 shadow-sm"
+                                                    : "border-muted hover:border-muted-foreground/30"
+                                                    }`}
+                                            >
+                                                <ShoppingBag className={`h-5 w-5 ${field.value === "VENDA" ? "text-primary" : "text-muted-foreground"}`} />
+                                                <div>
+                                                    <p className={`text-sm font-medium ${field.value === "VENDA" ? "text-primary" : ""}`}>Produto para Venda</p>
+                                                    <p className="text-[11px] text-muted-foreground">Produto comercializado ao cliente</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { field.onChange("INTERNO"); form.setValue("availableForSale", false) }}
+                                                className={`flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-all ${field.value === "INTERNO"
+                                                    ? "border-orange-500 bg-orange-500/5 shadow-sm"
+                                                    : "border-muted hover:border-muted-foreground/30"
+                                                    }`}
+                                            >
+                                                <Wrench className={`h-5 w-5 ${field.value === "INTERNO" ? "text-orange-500" : "text-muted-foreground"}`} />
+                                                <div>
+                                                    <p className={`text-sm font-medium ${field.value === "INTERNO" ? "text-orange-500" : ""}`}>Produto Interno</p>
+                                                    <p className="text-[11px] text-muted-foreground">Material de uso interno da empresa</p>
+                                                </div>
+                                            </button>
+                                        </div>
+                                    </FormItem>
+                                )}
+                            />
+
+                            {/* Setor (só para INTERNO) */}
+                            {watchProductType === "INTERNO" && (
+                                <FormField
+                                    control={form.control}
+                                    name="department"
+                                    render={({ field }) => (
+                                        <FormItem className="col-span-2">
+                                            <FormLabel>Setor</FormLabel>
+                                            <Select onValueChange={field.onChange} value={field.value || ""}>
+                                                <FormControl>
+                                                    <SelectTrigger className="rounded-xl">
+                                                        <SelectValue placeholder="Selecione o setor" />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value="LOGISTICA">Logística</SelectItem>
+                                                    <SelectItem value="ADMINISTRATIVO">Administrativo</SelectItem>
+                                                    <SelectItem value="MANUTENCAO">Manutenção</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
                             {/* Nome */}
                             <FormField
                                 control={form.control}
@@ -339,6 +432,33 @@ export function ProductModal({ open, onOpenChange, editingProduct, onSaved }: Pr
                             >
                                 Cancelar
                             </Button>
+
+                            {/* Toggle Liberado p/ Venda — só aparece para produto VENDA */}
+                            {watchProductType === "VENDA" && (
+                                <FormField
+                                    control={form.control}
+                                    name="availableForSale"
+                                    render={({ field }) => (
+                                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border bg-muted/30">
+                                            <span className={`text-xs font-medium select-none transition-colors ${!field.value ? "text-yellow-600" : "text-muted-foreground/40"
+                                                }`}>
+                                                Desativado
+                                            </span>
+                                            <Switch
+                                                id="available-for-sale"
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                                disabled={isSubmitting}
+                                            />
+                                            <span className={`text-xs font-medium select-none transition-colors ${field.value ? "text-emerald-600" : "text-muted-foreground/40"
+                                                }`}>
+                                                Ativado
+                                            </span>
+                                        </div>
+                                    )}
+                                />
+                            )}
+
                             <Button
                                 type="submit"
                                 disabled={isSubmitting}

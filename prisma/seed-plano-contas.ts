@@ -18,6 +18,7 @@ const PLANO_DE_CONTAS = [
         children: [
             { code: "1.1", name: "Receitas de Vendas (Produtos)", type: "income", color: "#34d399", level: 1 },
             { code: "1.2", name: "Receitas de Serviços", type: "income", color: "#6ee7b7", level: 1 },
+            { code: "1.3", name: "Receita de Frete (repasse cliente)", type: "income", color: "#a7f3d0", level: 1 },
         ],
     },
     {
@@ -31,6 +32,9 @@ const PLANO_DE_CONTAS = [
             { code: "2.2", name: "Impostos sobre Vendas", type: "expense", color: "#fcd34d", level: 1 },
             { code: "2.3", name: "Taxas de Cartão / Meios de Pagamento", type: "expense", color: "#fde68a", level: 1 },
             { code: "2.4", name: "Fretes e Logística", type: "expense", color: "#fef3c7", level: 1 },
+            { code: "2.4.1", name: "Frete Repasse (pago pelo cliente)", type: "expense", color: "#fef9c3", level: 2 },
+            { code: "2.4.2", name: "Frete Empresa (pago pela empresa)", type: "expense", color: "#fefce8", level: 2 },
+            { code: "2.5", name: "Material de Embalagem", type: "expense", color: "#fed7aa", level: 1 },
         ],
     },
     {
@@ -76,8 +80,24 @@ async function seedPlanoDeContas(userId: string) {
         console.log(`  ✅ Grupo ${grupo.code} "${grupo.name}" criado`)
 
         // Cria os filhos
+        const createdChildren: Record<string, string> = {} // code -> id
         for (const child of grupo.children) {
-            await prisma.category.create({
+            // Determinar parentId: nível 2 busca pai no nível 1 (ex: 2.4.1 → 2.4)
+            let childParentId = parent.id
+            if (child.level === 2) {
+                const parentCode = child.code.split(".").slice(0, 2).join(".")
+                if (createdChildren[parentCode]) {
+                    childParentId = createdChildren[parentCode]
+                } else {
+                    // Buscar no banco caso já exista
+                    const existingParent = await prisma.category.findFirst({
+                        where: { userId, code: parentCode, isSystem: true },
+                    })
+                    if (existingParent) childParentId = existingParent.id
+                }
+            }
+
+            const created = await prisma.category.create({
                 data: {
                     code: child.code,
                     name: child.name,
@@ -86,9 +106,10 @@ async function seedPlanoDeContas(userId: string) {
                     level: child.level,
                     isSystem: true,
                     userId,
-                    parentId: parent.id,
+                    parentId: childParentId,
                 },
             })
+            createdChildren[child.code] = created.id
             console.log(`    ✅ Subcategoria ${child.code} "${child.name}" criada`)
         }
     }

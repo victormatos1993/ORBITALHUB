@@ -214,6 +214,8 @@ export async function getTransactions(filters?: TransactionFilters) {
                 ...t,
                 amount: Number(t.amount),
                 date: t.date.toISOString().split('T')[0],
+                paidAt: t.paidAt ? t.paidAt.toISOString().split('T')[0] : null,
+                competenceDate: t.competenceDate ? t.competenceDate.toISOString().split('T')[0] : null,
                 customerName: t.customer?.name,
                 customerDocument: t.customer?.document,
                 supplierName: t.supplier?.name,
@@ -570,6 +572,7 @@ export async function getContasAReceber() {
             customerName: t.customer?.name,
             contaName: t.contaFinanceira?.name,
             maquinaName: t.maquinaCartao?.name,
+            saleId: t.saleId ?? null,
         }))
     } catch (error) {
         console.error("Erro ao buscar contas a receber:", error)

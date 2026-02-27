@@ -104,6 +104,11 @@ export async function createPurchaseInvoice(data: CreatePurchaseInvoiceData) {
 
         const supplierId = data.supplierId === "" ? null : data.supplierId
 
+        // Track new products for notification
+        const newProductsCreated: { id: string; name: string }[] = []
+        let invoiceId = ""
+        let invoiceLabel = ""
+
         await prisma.$transaction(async (tx) => {
             // ── Criar PurchaseInvoice ──
             const invoice = await (tx as any).purchaseInvoice.create({
@@ -123,6 +128,9 @@ export async function createPurchaseInvoice(data: CreatePurchaseInvoiceData) {
                     createdById: userId || null,
                 },
             })
+
+            invoiceId = invoice.id
+            invoiceLabel = data.invoiceNumber ? `NF ${data.invoiceNumber}` : `Entrada #${invoice.id.slice(-6).toUpperCase()}`
 
             // ── Criar StockEntries e atualizar produtos ──
             const affectedProductIds = new Set<string>()
@@ -146,6 +154,7 @@ export async function createPurchaseInvoice(data: CreatePurchaseInvoiceData) {
                         } as any,
                     })
                     productId = newProd.id
+                    newProductsCreated.push({ id: newProd.id, name: item.newProduct.name })
                 }
 
                 if (!productId) continue
@@ -191,8 +200,6 @@ export async function createPurchaseInvoice(data: CreatePurchaseInvoiceData) {
                 })
             }
 
-            const invoiceLabel = data.invoiceNumber ? `NF ${data.invoiceNumber}` : `Entrada #${invoice.id.slice(-6).toUpperCase()}`
-
             // Contas a pagar — vencimento 30 dias após a entrada
             const vencimento = new Date(data.entryDate)
             vencimento.setDate(vencimento.getDate() + 30)
@@ -214,10 +221,49 @@ export async function createPurchaseInvoice(data: CreatePurchaseInvoiceData) {
             })
         })
 
+        // ── Gerar Notificações (fora da transação) ──
+
+        // 1. PRICING_NEEDED — para cada produto novo sem preço (targetRole: COMERCIAL)
+        if (newProductsCreated.length > 0) {
+            const prodNames = newProductsCreated.map(p => p.name).join(", ")
+            await prisma.notification.create({
+                data: {
+                    userId: tenantId,
+                    type: "PRICING_NEEDED",
+                    targetRole: "COMERCIAL",
+                    title: newProductsCreated.length === 1
+                        ? `Produto sem preço de venda`
+                        : `${newProductsCreated.length} produtos sem preço de venda`,
+                    description: newProductsCreated.length === 1
+                        ? `O produto "${newProductsCreated[0].name}" foi cadastrado via ${invoiceLabel}. Defina o preço de venda.`
+                        : `Produtos cadastrados via ${invoiceLabel}: ${prodNames}. Defina os preços de venda.`,
+                    purchaseInvoiceId: invoiceId,
+                    status: "PENDING",
+                    dueAt: new Date(),
+                } as any,
+            })
+        }
+
+        // 2. PAYMENT_REVIEW — revisão da conta a pagar (targetRole: FINANCEIRO)
+        await prisma.notification.create({
+            data: {
+                userId: tenantId,
+                type: "PAYMENT_REVIEW",
+                targetRole: "FINANCEIRO",
+                title: `Conta a pagar — ${invoiceLabel}`,
+                description: `Revise o vencimento e forma de pagamento da compra de mercadoria (${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalCost)}).`,
+                purchaseInvoiceId: invoiceId,
+                expectedAmount: totalCost,
+                status: "PENDING",
+                dueAt: new Date(),
+            } as any,
+        })
+
         revalidatePath("/dashboard/estoque/entrada")
         revalidatePath("/dashboard/cadastros/produtos")
         revalidatePath("/dashboard/financeiro")
         revalidatePath("/dashboard/financeiro/transacoes")
+        revalidatePath("/dashboard/notificacoes")
 
         return { success: true }
     } catch (error) {

@@ -195,7 +195,7 @@ export function SaleForm({
             const [customersData, suppliersData, productsData, servicesData, contasData, maquinasData] = await Promise.all([
                 getCustomers({ pageSize: 1000 }),
                 getSuppliers({ pageSize: 1000 }),
-                getProducts({ pageSize: 1000 }),
+                getProducts({ pageSize: 1000, productType: "VENDA", availableForSale: true }),
                 getServices(),
                 getContasFinanceiras(),
                 getMaquinasCartao(),
@@ -265,11 +265,21 @@ export function SaleForm({
         setCart(prev => {
             const existing = prev.find(item => item.itemType === 'product' && item.productId === product.id)
             if (existing) {
+                // Bloquear se ultrapassar estoque
+                if (product.manageStock && existing.quantity >= product.stockQuantity) {
+                    toast.error(`Estoque insuficiente — apenas ${product.stockQuantity} unidade(s) disponível(is)`)
+                    return prev
+                }
                 return prev.map(item =>
                     item.itemType === 'product' && item.productId === product.id
                         ? { ...item, quantity: item.quantity + 1 }
                         : item
                 )
+            }
+            // Bloquear se estoque zerado
+            if (product.manageStock && product.stockQuantity <= 0) {
+                toast.error(`${product.name} está sem estoque`)
+                return prev
             }
             return [...prev, {
                 itemId: `product-${product.id}`,
@@ -318,7 +328,12 @@ export function SaleForm({
     const updateQuantity = (itemId: string, delta: number) => {
         setCart(prev => prev.map(item => {
             if (item.itemId !== itemId) return item
-            const newQty = Math.max(1, item.quantity + delta)
+            let newQty = Math.max(1, item.quantity + delta)
+            // Limitar ao estoque disponível
+            if (item.manageStock && newQty > item.stock) {
+                toast.error(`Estoque insuficiente — apenas ${item.stock} unidade(s) disponível(is)`)
+                newQty = item.stock
+            }
             return { ...item, quantity: newQty }
         }))
     }
@@ -677,11 +692,17 @@ export function SaleForm({
                                         <Input
                                             type="number"
                                             min="1"
+                                            max={item.manageStock ? item.stock : undefined}
                                             value={item.quantity}
                                             onChange={(e) => {
-                                                const val = parseInt(e.target.value) || 1
+                                                let val = parseInt(e.target.value) || 1
+                                                val = Math.max(1, val)
+                                                if (item.manageStock && val > item.stock) {
+                                                    toast.error(`Estoque insuficiente — apenas ${item.stock} unidade(s) disponível(is)`)
+                                                    val = item.stock
+                                                }
                                                 setCart(prev => prev.map(i =>
-                                                    i.itemId === item.itemId ? { ...i, quantity: Math.max(1, val) } : i
+                                                    i.itemId === item.itemId ? { ...i, quantity: val } : i
                                                 ))
                                             }}
                                             className="h-8 w-12 text-center px-1 rounded-lg text-sm font-medium [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -692,6 +713,7 @@ export function SaleForm({
                                             size="icon"
                                             className="h-8 w-8 rounded-lg"
                                             onClick={() => updateQuantity(item.itemId, 1)}
+                                            disabled={item.manageStock && item.quantity >= item.stock}
                                         >
                                             <Plus className="h-3 w-3" />
                                         </Button>

@@ -1,5 +1,5 @@
 import { Metadata } from "next"
-import { AgendaContent, AgendaEvent } from "@/components/agenda/agenda-content"
+import { AgendaListClient, AgendaEvent } from "./agenda-list-client"
 import { getAgendaEvents } from "@/app/actions/agenda"
 import { getProducts } from "@/app/actions/product"
 import { getServices } from "@/app/actions/service"
@@ -47,7 +47,7 @@ export default async function AgendaPage() {
     const products = productsRes.products || []
     const customers = customersRes.customers || []
 
-    return <AgendaContent
+    return <AgendaListClient
         initialEvents={formattedEvents}
         products={products}
         services={services}

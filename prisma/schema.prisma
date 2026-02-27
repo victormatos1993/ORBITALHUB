@@ -48,6 +48,7 @@ model User {
   createdPurchaseInvoices PurchaseInvoice[] @relation("PurchaseCreator")
   purchaseInvoices    PurchaseInvoice[]
   stockEntries        StockEntry[]
+  shipmentOrders      ShipmentOrder[]
   parentAdmin         User?          @relation("TeamMembers", fields: [parentAdminId], references: [id])
   teamMembers         User[]         @relation("TeamMembers")
 }
@@ -56,14 +57,16 @@ model User {
 model Notification {
   id             String    @id @default(cuid())
   userId         String                          // tenant dono
-  type           String    @default("AGENDA_EVENT") // AGENDA_EVENT | SYSTEM
+  type           String    @default("AGENDA_EVENT") // AGENDA_EVENT | PAYMENT_ALERT | PRICING_NEEDED | PAYMENT_REVIEW
   title          String
   description    String?
+  targetRole     String?                         // COMERCIAL | FINANCEIRO | ADMIN | null (todos)
 
   // Referências opcionais
-  eventId        String?                         // AgendaEvent vinculado
-  customerId     String?
-  customerName   String?
+  eventId            String?                     // AgendaEvent vinculado
+  purchaseInvoiceId  String?                     // PurchaseInvoice vinculado
+  customerId         String?
+  customerName       String?
 
   // Valores financeiros
   expectedAmount Decimal?                        // valor previsto (do serviço/produto)
@@ -82,6 +85,7 @@ model Notification {
   user           User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, eventId])                    // 1 notificação por evento por tenant
+  @@index([userId, type, status])
 }
 
 
@@ -183,6 +187,7 @@ model Supplier {
   user         User          @relation(fields: [userId], references: [id])
   transactions Transaction[]
   purchaseInvoices PurchaseInvoice[]
+  shipmentOrders   ShipmentOrder[]  @relation("ShipmentCarrier")
 }
 
 model Transaction {
@@ -276,6 +281,9 @@ model Product {
   manageStock   Boolean       @default(true)
   ncm           String?
   sku           String?
+  productType   String        @default("VENDA")       // VENDA | INTERNO
+  department    String?                                // LOGISTICA | ADMINISTRATIVO | MANUTENCAO (só se INTERNO)
+  availableForSale Boolean    @default(false)          // true = liberado para venda no PDV
   userId        String
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -366,6 +374,7 @@ model Sale {
   user           User          @relation(fields: [userId], references: [id])
   items          SaleItem[]
   transactions   Transaction[]
+  shipmentOrder  ShipmentOrder?
 }
 
 model SaleItem {
@@ -513,4 +522,34 @@ enum Role {
   VENDEDOR
   FINANCEIRO
   VISUALIZADOR
+}
+
+/// Envio logístico — rastreia o ciclo de preparação e entrega de cada venda
+model ShipmentOrder {
+  id              String    @id @default(cuid())
+  saleId          String    @unique
+  status          String    @default("PENDENTE")
+  // PENDENTE | SEPARANDO | EMBALADO | ETIQUETADO | POSTADO | EM_TRANSITO | ENTREGUE
+  trackingCode    String?
+  carrierId       String?
+  shippingCost    Decimal?
+  shippingMethod  String?   // PAC | SEDEX | TRANSPORTADORA | MOTOBOY
+  weight          Decimal?
+  notes           String?
+
+  separatedAt     DateTime?
+  packedAt        DateTime?
+  labeledAt       DateTime?
+  postedAt        DateTime?
+  deliveredAt     DateTime?
+
+  userId          String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sale            Sale      @relation(fields: [saleId], references: [id])
+  carrier         Supplier? @relation("ShipmentCarrier", fields: [carrierId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
 }
