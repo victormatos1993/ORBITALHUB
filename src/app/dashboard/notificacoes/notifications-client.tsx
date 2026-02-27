@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { format, isToday, isYesterday } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Bell, CheckCircle2, XCircle, ShoppingCart, Clock, TrendingUp, ChevronDown, Trash2 } from "lucide-react"
+import { Bell, CheckCircle2, XCircle, ShoppingCart, Clock, TrendingUp, ChevronDown, Trash2, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { deleteNotification } from "@/app/actions/notifications"
 import { toast } from "sonner"
@@ -23,6 +24,30 @@ type Notification = {
     actionAt: Date | null
     dueAt: Date
     createdAt: Date
+    eventId: string | null
+    purchaseInvoiceId: string | null
+}
+
+function getNotificationHref(n: Notification): string | null {
+    switch (n.type) {
+        case "AGENDA_EVENT":
+            return "/dashboard/agenda"
+        case "PAYMENT_ALERT":
+            return "/dashboard/vendas/pdv"
+        case "PRICING_NEEDED":
+            return "/dashboard/cadastros/produtos"
+        case "PAYMENT_REVIEW":
+            return "/dashboard/financeiro/contas-pagar"
+        default:
+            return null
+    }
+}
+
+const NOTIFICATION_ACTION_LABEL: Record<string, string> = {
+    AGENDA_EVENT: "Ver agenda",
+    PAYMENT_ALERT: "Abrir PDV",
+    PRICING_NEEDED: "Ver produtos",
+    PAYMENT_REVIEW: "Ver contas",
 }
 
 type DailySummary = {
@@ -42,7 +67,7 @@ type DailySummary = {
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode; badge: string }> = {
     PENDING: { label: "Pendente", color: "text-amber-600 dark:text-amber-400", icon: <Clock className="h-4 w-4" />, badge: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" },
-    CONFIRMED: { label: "Faturado", color: "text-emerald-600 dark:text-emerald-400", icon: <CheckCircle2 className="h-4 w-4" />, badge: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" },
+    CONFIRMED: { label: "Concluído", color: "text-emerald-600 dark:text-emerald-400", icon: <CheckCircle2 className="h-4 w-4" />, badge: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" },
     ACTED_PDV: { label: "Venda PDV", color: "text-blue-600 dark:text-blue-400", icon: <ShoppingCart className="h-4 w-4" />, badge: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30" },
     CANCELLED: { label: "Cancelado", color: "text-red-600 dark:text-red-400", icon: <XCircle className="h-4 w-4" />, badge: "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30" },
     DISMISSED: { label: "Dispensado", color: "text-slate-500", icon: <ChevronDown className="h-4 w-4" />, badge: "bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30" },
@@ -59,7 +84,7 @@ function formatDueDate(date: Date) {
 const FILTER_OPTIONS = [
     { value: "ALL", label: "Todas" },
     { value: "PENDING", label: "Pendentes" },
-    { value: "CONFIRMED", label: "Faturadas" },
+    { value: "CONFIRMED", label: "Concluídas" },
     { value: "ACTED_PDV", label: "PDV" },
     { value: "CANCELLED", label: "Canceladas" },
     { value: "DISMISSED", label: "Dispensadas" },
@@ -72,6 +97,7 @@ export default function NotificationsClient({
     notifications: Notification[]
     todaySummary: DailySummary
 }) {
+    const router = useRouter()
     const [filter, setFilter] = useState<string>("ALL")
     const [notifications, setNotifications] = useState<Notification[]>(initialNotifications)
     const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -163,7 +189,7 @@ export default function NotificationsClient({
                                 <p className="text-base font-bold">{fmt(todaySummary.totalExpected)}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-muted-foreground">Valor faturado</p>
+                                <p className="text-xs text-muted-foreground">Valor concluído</p>
                                 <p className={cn("text-base font-bold", todaySummary.totalBilled >= todaySummary.totalExpected ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>
                                     {fmt(todaySummary.totalBilled)}
                                 </p>
@@ -223,11 +249,16 @@ export default function NotificationsClient({
                         const billed = n.status === "CONFIRMED" || n.status === "ACTED_PDV"
                         const isDeleting = deletingId === n.id
 
+                        const href = getNotificationHref(n)
+                        const actionLabel = NOTIFICATION_ACTION_LABEL[n.type] ?? null
+
                         return (
                             <div
                                 key={n.id}
+                                onClick={() => href && router.push(href)}
                                 className={cn(
-                                    "flex items-start gap-4 rounded-2xl border bg-card px-5 py-4 transition-all",
+                                    "flex items-start gap-4 rounded-2xl border bg-card px-5 py-4 transition-all group",
+                                    href && "cursor-pointer hover:shadow-md hover:border-primary/30",
                                     n.type === "PAYMENT_ALERT" && n.status === "PENDING" && "border-red-500/40 bg-red-500/5",
                                     n.type !== "PAYMENT_ALERT" && n.status === "PENDING" && "border-amber-500/20 bg-amber-500/3",
                                     n.status === "CONFIRMED" && "border-emerald-500/20",
@@ -262,12 +293,11 @@ export default function NotificationsClient({
                                         <p className="text-xs text-muted-foreground mt-0.5">👤 {n.customerName}</p>
                                     )}
                                     {n.description && (() => {
-                                        // PAYMENT_ALERT resolvido: substitui o texto de alerta por confirmação
                                         if (n.type === "PAYMENT_ALERT" && (n.status === "ACTED_PDV" || n.status === "DISMISSED")) {
                                             return (
                                                 <p className="text-xs text-muted-foreground">
                                                     {n.status === "ACTED_PDV"
-                                                        ? "Serviço faturado pelo PDV."
+                                                        ? "Serviço concluído pelo PDV."
                                                         : "Alerta dispensado manualmente."}
                                                 </p>
                                             )
@@ -289,13 +319,13 @@ export default function NotificationsClient({
                                         )}
                                         {billed && n.actionAmount != null && n.actionAmount > 0 && (
                                             <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                                                ✓ Faturado: {fmt(n.actionAmount)}
+                                                ✓ Concluído: {fmt(n.actionAmount)}
                                             </span>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Datas + Lixeira */}
+                                {/* Datas + Ações */}
                                 <div className="text-right shrink-0 flex flex-col items-end gap-2">
                                     <p className="text-xs text-muted-foreground">
                                         Venceu: {formatDueDate(n.dueAt)}
@@ -305,18 +335,26 @@ export default function NotificationsClient({
                                             Atuado: {formatDueDate(n.actionAt)}
                                         </p>
                                     )}
-                                    {/* Botão de excluir */}
-                                    <button
-                                        onClick={() => handleDelete(n.id)}
-                                        disabled={isDeleting}
-                                        title="Excluir notificação"
-                                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 text-red-400 hover:border-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40"
-                                    >
-                                        {isDeleting
-                                            ? <span className="h-3 w-3 border-2 border-red-300 border-t-red-500 rounded-full animate-spin inline-block" />
-                                            : <Trash2 className="h-3.5 w-3.5" />
-                                        }
-                                    </button>
+                                    {/* Link de ação + Excluir */}
+                                    <div className="flex items-center gap-1.5">
+                                        {href && actionLabel && (
+                                            <span className="hidden group-hover:inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary">
+                                                {actionLabel}
+                                                <ChevronRight className="h-3 w-3" />
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleDelete(n.id) }}
+                                            disabled={isDeleting}
+                                            title="Excluir notificação"
+                                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 text-red-400 hover:border-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40"
+                                        >
+                                            {isDeleting
+                                                ? <span className="h-3 w-3 border-2 border-red-300 border-t-red-500 rounded-full animate-spin inline-block" />
+                                                : <Trash2 className="h-3.5 w-3.5" />
+                                            }
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )

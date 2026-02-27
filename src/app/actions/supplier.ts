@@ -68,6 +68,7 @@ export async function createSupplier(data: {
     email?: string | null
     phone?: string | null
     document?: string | null
+    supplierType?: string | null
     zipCode?: string | null
     address?: string | null
     number?: string | null
@@ -89,6 +90,7 @@ export async function createSupplier(data: {
                 email: data.email || null,
                 phone: data.phone || null,
                 document: data.document || null,
+                supplierType: data.supplierType || null,
                 zipCode: data.zipCode || null,
                 address: data.address || null,
                 number: data.number || null,
@@ -114,6 +116,7 @@ export async function updateSupplier(id: string, data: {
     email?: string | null
     phone?: string | null
     document?: string | null
+    supplierType?: string | null
     zipCode?: string | null
     address?: string | null
     number?: string | null
@@ -141,6 +144,7 @@ export async function updateSupplier(id: string, data: {
                 email: data.email || null,
                 phone: data.phone || null,
                 document: data.document || null,
+                supplierType: data.supplierType || null,
                 zipCode: data.zipCode || null,
                 address: data.address || null,
                 number: data.number || null,

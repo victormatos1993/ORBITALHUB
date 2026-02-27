@@ -40,11 +40,13 @@ export function VendasClient({ sales }: { sales: Sale[] }) {
     const [viewMode, setViewMode] = useState<ViewMode>("month")
     const [selectedMonth, setSelectedMonth] = useState(new Date())
     const [selectedCardIndex, setSelectedCardIndex] = useState(0)
+    const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null)
     const [search, setSearch] = useState("")
 
     const handleViewModeChange = (mode: ViewMode) => {
         setViewMode(mode)
         setSelectedCardIndex(0)
+        setSelectedDayIndex(null)
     }
 
     const getDateRange = useMemo(() => {
@@ -81,15 +83,26 @@ export function VendasClient({ sales }: { sales: Sale[] }) {
     }, [sales, viewMode, selectedMonth, getDateRange, search])
 
     const tableSales = useMemo(() => {
-        if (viewMode !== "3months" && viewMode !== "6months") return filteredSales
-        const cardMonth = addMonths(startOfMonth(selectedMonth), selectedCardIndex)
-        const mStart = startOfMonth(cardMonth)
-        const mEnd = endOfMonth(cardMonth)
-        return filteredSales.filter(s => {
-            const d = new Date(getSaleDate(s) + "T12:00:00")
-            return isWithinInterval(d, { start: mStart, end: mEnd })
-        })
-    }, [filteredSales, viewMode, selectedMonth, selectedCardIndex])
+        // Day card filter for week/month
+        if ((viewMode === "week" || viewMode === "month") && selectedDayIndex !== null && getDateRange) {
+            const days = eachDayOfInterval(getDateRange)
+            const selectedDay = days[selectedDayIndex]
+            if (selectedDay) {
+                const dayStr = format(selectedDay, "yyyy-MM-dd")
+                return filteredSales.filter(s => getSaleDate(s) === dayStr)
+            }
+        }
+        if (viewMode === "3months" || viewMode === "6months") {
+            const cardMonth = addMonths(startOfMonth(selectedMonth), selectedCardIndex)
+            const mStart = startOfMonth(cardMonth)
+            const mEnd = endOfMonth(cardMonth)
+            return filteredSales.filter(s => {
+                const d = new Date(getSaleDate(s) + "T12:00:00")
+                return isWithinInterval(d, { start: mStart, end: mEnd })
+            })
+        }
+        return filteredSales
+    }, [filteredSales, viewMode, selectedMonth, selectedCardIndex, selectedDayIndex, getDateRange])
 
     const periodCards = useMemo(() => {
         if (viewMode === "today" || viewMode === "all") return []
@@ -237,20 +250,52 @@ export function VendasClient({ sales }: { sales: Sale[] }) {
                     }}
                 >
                     {periodCards.map((card, i) => {
-                        const isSelectable = viewMode === "3months" || viewMode === "6months"
-                        const isSelected = isSelectable && selectedCardIndex === i
+                        const isMultiMonth = viewMode === "3months" || viewMode === "6months"
+                        const isDaySelectable = viewMode === "week" || viewMode === "month"
+                        const isSelectable = isMultiMonth || isDaySelectable
+                        const isSelected = isMultiMonth
+                            ? selectedCardIndex === i
+                            : isDaySelectable
+                                ? selectedDayIndex === i
+                                : false
+
+                        const handleCardClick = () => {
+                            if (isMultiMonth) {
+                                setSelectedCardIndex(i)
+                            } else if (isDaySelectable) {
+                                setSelectedDayIndex(prev => prev === i ? null : i)
+                            }
+                        }
+
+                        if (card.isToday) {
+                            return (
+                                <div
+                                    key={i}
+                                    onClick={isSelectable ? handleCardClick : undefined}
+                                    className={`rounded-xl border p-2 text-center transition-all shadow-md bg-blue-700 border-blue-700 dark:bg-white dark:border-gray-300 ${isSelectable ? "cursor-pointer" : ""} ${isSelected ? "ring-2 ring-offset-1" : ""}`}
+                                >
+                                    <p className="text-[10px] font-semibold uppercase text-white dark:text-slate-800">{card.label}</p>
+                                    <p className="text-[9px] opacity-70 text-white dark:text-slate-800">{card.sublabel}</p>
+                                    {card.total > 0 ? (
+                                        <p className="text-xs font-bold mt-0.5 text-white dark:text-slate-800">{formatBRL(card.total)}</p>
+                                    ) : (
+                                        <p className="text-[10px] mt-0.5 opacity-50 text-white dark:text-slate-800">—</p>
+                                    )}
+                                </div>
+                            )
+                        }
+
                         return (
                             <div
                                 key={i}
-                                onClick={isSelectable ? () => setSelectedCardIndex(i) : undefined}
+                                onClick={isSelectable ? handleCardClick : undefined}
                                 className={`rounded-xl border p-2 text-center transition-all ${isSelectable ? "cursor-pointer hover:ring-1 hover:ring-primary/30" : ""} ${isSelected
-                                        ? "border-primary bg-primary/5 ring-2 ring-primary/40 shadow-sm"
-                                        : card.isToday ? "border-primary/50 bg-primary/5"
-                                            : card.total > 0 ? "bg-blue-500/5 border-blue-500/20"
-                                                : "bg-muted/30 border-muted"
+                                    ? "border-primary bg-primary/5 ring-2 ring-primary/40 shadow-sm"
+                                    : card.total > 0 ? "bg-blue-500/5 border-blue-500/20"
+                                        : "bg-muted/30 border-muted"
                                     }`}
                             >
-                                <p className={`text-[10px] font-semibold uppercase ${isSelected || card.isToday ? "text-primary" : "text-muted-foreground"}`}>{card.label}</p>
+                                <p className={`text-[10px] font-semibold uppercase ${isSelected ? "text-primary" : "text-muted-foreground"}`}>{card.label}</p>
                                 <p className="text-[9px] text-muted-foreground">{card.sublabel}</p>
                                 {card.total > 0 ? (
                                     <p className="text-xs font-bold text-blue-500 mt-0.5">{formatBRL(card.total)}</p>

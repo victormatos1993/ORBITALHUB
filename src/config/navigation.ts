@@ -82,12 +82,8 @@ export const navigationRoutes: NavRoute[] = [
     {
         label: "CRM",
         icon: UsersRound,
-        href: "/dashboard/cadastros",
+        href: "/dashboard/cadastros/clientes",
         roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "FINANCEIRO", "VISUALIZADOR"],
-        items: [
-            { name: "Clientes", href: "/dashboard/cadastros/clientes" },
-            { name: "Fornecedores", href: "/dashboard/cadastros/fornecedores" },
-        ],
     },
     {
         label: "Estoque",
@@ -96,6 +92,7 @@ export const navigationRoutes: NavRoute[] = [
         roles: ["ADMINISTRADOR", "GERENTE", "VENDEDOR", "VISUALIZADOR"],
         items: [
             { name: "Produtos", href: "/dashboard/cadastros/produtos" },
+            { name: "Fornecedores", href: "/dashboard/cadastros/fornecedores" },
             { name: "Entrada de Mercadorias", href: "/dashboard/estoque/entrada" },
         ],
     },

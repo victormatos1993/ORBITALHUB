@@ -17,7 +17,7 @@ import { createSupplier, updateSupplier } from "@/app/actions/supplier"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2, Package, Factory, Hammer } from "lucide-react"
 import Link from "next/link"
 import { useCepLookup } from "@/lib/use-cep-lookup"
 
@@ -31,6 +31,7 @@ const supplierFormSchema = z.object({
     }).optional().or(z.literal('')),
     phone: z.string().optional().or(z.literal('')),
     document: z.string().optional().or(z.literal('')),
+    supplierType: z.string().optional().or(z.literal('')),
     zipCode: z.string().optional().or(z.literal('')),
     address: z.string().optional().or(z.literal('')),
     number: z.string().optional().or(z.literal('')),
@@ -49,6 +50,7 @@ interface SupplierFormProps {
         email?: string | null
         phone?: string | null
         document?: string | null
+        supplierType?: string | null
         zipCode?: string | null
         address?: string | null
         number?: string | null
@@ -71,6 +73,7 @@ export function SupplierForm({ initialData }: SupplierFormProps) {
             email: initialData?.email || "",
             phone: initialData?.phone || "",
             document: initialData?.document || "",
+            supplierType: initialData?.supplierType || "",
             zipCode: initialData?.zipCode || "",
             address: initialData?.address || "",
             number: initialData?.number || "",
@@ -139,6 +142,7 @@ export function SupplierForm({ initialData }: SupplierFormProps) {
                 email: data.email || null,
                 phone: data.phone || null,
                 document: data.document || null,
+                supplierType: data.supplierType || null,
                 zipCode: data.zipCode || null,
                 address: data.address || null,
                 number: data.number || null,
@@ -154,7 +158,7 @@ export function SupplierForm({ initialData }: SupplierFormProps) {
                     toast.error(result.error)
                 } else {
                     toast.success("Fornecedor atualizado com sucesso!")
-                    router.push("/dashboard/cadastros/fornecedores")
+                    router.push(`/dashboard/cadastros/fornecedores/${initialData.id}`)
                     router.refresh()
                 }
             } else {
@@ -179,7 +183,7 @@ export function SupplierForm({ initialData }: SupplierFormProps) {
         <div className="space-y-6">
             <div className="flex items-center space-x-4">
                 <Button variant="ghost" size="icon" asChild>
-                    <Link href="/dashboard/cadastros/fornecedores">
+                    <Link href={initialData ? `/dashboard/cadastros/fornecedores/${initialData.id}` : "/dashboard/cadastros/fornecedores"}>
                         <ArrowLeft className="h-4 w-4" />
                     </Link>
                 </Button>
@@ -266,6 +270,55 @@ export function SupplierForm({ initialData }: SupplierFormProps) {
                                 </FormItem>
                             )}
                         />
+
+                        {/* Tipo de Fornecedor */}
+                        <FormField
+                            control={form.control}
+                            name="supplierType"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Categoria do Fornecedor</FormLabel>
+                                    <FormControl>
+                                        <div className="grid grid-cols-3 gap-3">
+                                            {[
+                                                { value: "MATERIAL_INTERNO", label: "Material Interno", description: "Materiais de uso da empresa", icon: Factory },
+                                                { value: "PRODUTO", label: "Produto para Revenda", description: "Produtos para comercialização", icon: Package },
+                                                { value: "MATERIA_PRIMA", label: "Matéria Prima", description: "Insumos para produção", icon: Hammer },
+                                            ].map(opt => {
+                                                const Icon = opt.icon
+                                                const selectedTypes = (field.value || "").split(",").filter(Boolean)
+                                                const isSelected = selectedTypes.includes(opt.value)
+                                                return (
+                                                    <button
+                                                        key={opt.value}
+                                                        type="button"
+                                                        disabled={isSubmitting}
+                                                        onClick={() => {
+                                                            const updated = isSelected
+                                                                ? selectedTypes.filter(t => t !== opt.value)
+                                                                : [...selectedTypes, opt.value]
+                                                            field.onChange(updated.join(","))
+                                                        }}
+                                                        className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 transition-all text-center ${isSelected
+                                                            ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                                                            : "border-muted hover:border-primary/30 hover:bg-muted/50"
+                                                            }`}
+                                                    >
+                                                        <Icon className={`h-5 w-5 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                                                        <span className={`text-xs font-medium ${isSelected ? "text-primary" : "text-muted-foreground"}`}>
+                                                            {opt.label}
+                                                        </span>
+                                                        <span className="text-[10px] text-muted-foreground leading-tight">{opt.description}</span>
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <FormField
                                 control={form.control}
@@ -386,7 +439,7 @@ export function SupplierForm({ initialData }: SupplierFormProps) {
                                 variant="outline"
                                 type="button"
                                 disabled={isSubmitting}
-                                onClick={() => router.push("/dashboard/cadastros/fornecedores")}
+                                onClick={() => router.push(initialData ? `/dashboard/cadastros/fornecedores/${initialData.id}` : "/dashboard/cadastros/fornecedores")}
                             >
                                 Cancelar
                             </Button>

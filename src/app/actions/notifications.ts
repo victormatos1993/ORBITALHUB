@@ -155,57 +155,167 @@ export async function dismissPaymentAlert(notificationId: string) {
 
 
 // ─── Reconciliation ─────────────────────────────────────────────────────────────
-// Corrige automaticamente notificações PENDING cujo evento já foi faturado/pago no banco.
-// Resolve casos onde a ação aconteceu antes da Central de Notificações existir.
+// Corrige automaticamente notificações PENDING verificando o estado real no banco.
+// Roda antes de retornar notificações para o usuário.
 export async function reconcileNotifications(tenantId: string) {
-    // Busca todas notificações PENDING com eventId
-    const pendingWithEvent = await prisma.notification.findMany({
-        where: {
-            userId: tenantId,
-            status: "PENDING",
-            eventId: { not: null },
-        },
-        select: { id: true, eventId: true },
+    let changed = false
+
+    // Busca TODAS as notificações PENDING de uma vez
+    const allPending = await prisma.notification.findMany({
+        where: { userId: tenantId, status: "PENDING" },
+        select: { id: true, type: true, eventId: true, purchaseInvoiceId: true },
     })
 
-    if (pendingWithEvent.length === 0) return
+    if (allPending.length === 0) return
 
-    const eventIds = pendingWithEvent.map(n => n.eventId!).filter(Boolean)
-
-    // Busca transações pagas vinculadas a esses eventos
-    const paidTransactions = await prisma.transaction.findMany({
-        where: {
-            userId: tenantId,
-            eventId: { in: eventIds },
-            type: "income",
-            status: "paid",
-        },
-        select: { eventId: true, amount: true, date: true },
-    })
-
-    if (paidTransactions.length === 0) return
-
-    const paidByEvent = new Map(
-        paidTransactions.map(t => [t.eventId!, t])
-    )
-
-    // Atualiza em lote as notificações que têm transação paga
-    const toUpdate = pendingWithEvent.filter(n => paidByEvent.has(n.eventId!))
-    await Promise.allSettled(
-        toUpdate.map(n => {
-            const tx = paidByEvent.get(n.eventId!)!
-            return prisma.notification.update({
-                where: { id: n.id },
-                data: {
-                    status: "CONFIRMED",
-                    actionAmount: tx.amount,
-                    actionAt: tx.date ?? new Date(),
-                },
-            })
+    // ── 1. AGENDA_EVENT — evento com transação paga ─────────────────────────
+    const pendingAgenda = allPending.filter(n => n.type === "AGENDA_EVENT" && n.eventId)
+    if (pendingAgenda.length > 0) {
+        const eventIds = pendingAgenda.map(n => n.eventId!).filter(Boolean)
+        const paidTransactions = await prisma.transaction.findMany({
+            where: {
+                userId: tenantId,
+                eventId: { in: eventIds },
+                type: "income",
+                status: "paid",
+            },
+            select: { eventId: true, amount: true, date: true },
         })
-    )
 
-    if (toUpdate.length > 0) {
+        if (paidTransactions.length > 0) {
+            const paidByEvent = new Map(paidTransactions.map(t => [t.eventId!, t]))
+            const toUpdate = pendingAgenda.filter(n => paidByEvent.has(n.eventId!))
+            await Promise.allSettled(
+                toUpdate.map(n => {
+                    const tx = paidByEvent.get(n.eventId!)!
+                    return prisma.notification.update({
+                        where: { id: n.id },
+                        data: { status: "CONFIRMED", actionAmount: tx.amount, actionAt: tx.date ?? new Date() },
+                    })
+                })
+            )
+            if (toUpdate.length > 0) changed = true
+        }
+    }
+
+    // ── 2. PAYMENT_ALERT — evento com paymentStatus = PAID ──────────────────
+    const pendingPayAlert = allPending.filter(n => n.type === "PAYMENT_ALERT" && n.eventId)
+    if (pendingPayAlert.length > 0) {
+        const realEventIds = pendingPayAlert
+            .map(n => n.eventId?.replace("pay_alert_", ""))
+            .filter(Boolean) as string[]
+
+        const paidEvents = await prisma.agendaEvent.findMany({
+            where: { id: { in: realEventIds }, paymentStatus: "PAID" },
+            select: {
+                id: true,
+                transactions: {
+                    where: { status: "paid", type: "income" },
+                    select: { amount: true },
+                    take: 1,
+                },
+            },
+        })
+
+        if (paidEvents.length > 0) {
+            const paidSet = new Map(paidEvents.map(e => [e.id, e]))
+            const toUpdate = pendingPayAlert.filter(n => {
+                const realId = n.eventId?.replace("pay_alert_", "") ?? ""
+                return paidSet.has(realId)
+            })
+            await Promise.allSettled(
+                toUpdate.map(n => {
+                    const realId = n.eventId?.replace("pay_alert_", "") ?? ""
+                    const ev = paidSet.get(realId)
+                    const amount = ev?.transactions?.[0]?.amount ? Number(ev.transactions[0].amount) : null
+                    return prisma.notification.update({
+                        where: { id: n.id },
+                        data: { status: amount ? "ACTED_PDV" : "DISMISSED", actionAmount: amount, actionAt: new Date() },
+                    })
+                })
+            )
+            if (toUpdate.length > 0) changed = true
+        }
+    }
+
+    // ── 3. PRICING_NEEDED — todos os produtos da NF têm preço ou são INTERNO ─
+    const pendingPricing = allPending.filter(n => n.type === "PRICING_NEEDED" && n.purchaseInvoiceId)
+    if (pendingPricing.length > 0) {
+        const invoiceIds = pendingPricing.map(n => n.purchaseInvoiceId!).filter(Boolean)
+
+        // Busca todos os produtos vinculados a essas NFs via StockEntry
+        const stockEntries = await prisma.stockEntry.findMany({
+            where: { purchaseInvoiceId: { in: invoiceIds } },
+            select: {
+                purchaseInvoiceId: true,
+                product: { select: { price: true, productType: true } },
+            },
+        })
+
+        // Agrupa por NF
+        const productsByInvoice = new Map<string, { price: number; productType: string }[]>()
+        for (const entry of stockEntries) {
+            const list = productsByInvoice.get(entry.purchaseInvoiceId) ?? []
+            list.push({ price: Number(entry.product.price), productType: (entry.product as any).productType ?? "VENDA" })
+            productsByInvoice.set(entry.purchaseInvoiceId, list)
+        }
+
+        // NF está resolvida se TODOS os produtos têm price > 0 OU productType = "INTERNO"
+        const resolvedInvoices = new Set<string>()
+        for (const [invoiceId, products] of productsByInvoice) {
+            const allResolved = products.every(p => p.price > 0 || p.productType === "INTERNO")
+            if (allResolved) resolvedInvoices.add(invoiceId)
+        }
+
+        if (resolvedInvoices.size > 0) {
+            const toUpdate = pendingPricing.filter(n => resolvedInvoices.has(n.purchaseInvoiceId!))
+            await Promise.allSettled(
+                toUpdate.map(n =>
+                    prisma.notification.update({
+                        where: { id: n.id },
+                        data: { status: "CONFIRMED", actionAt: new Date() },
+                    })
+                )
+            )
+            if (toUpdate.length > 0) changed = true
+        }
+    }
+
+    // ── 4. PAYMENT_REVIEW — transação de despesa da NF foi paga ──────────────
+    const pendingPayReview = allPending.filter(n => n.type === "PAYMENT_REVIEW" && n.purchaseInvoiceId)
+    if (pendingPayReview.length > 0) {
+        const invoiceIds = pendingPayReview.map(n => n.purchaseInvoiceId!).filter(Boolean)
+
+        // Busca transações de despesa pagas vinculadas a essas NFs
+        const paidExpenses = await prisma.transaction.findMany({
+            where: {
+                userId: tenantId,
+                purchaseInvoiceId: { in: invoiceIds },
+                type: "expense",
+                status: "paid",
+            },
+            select: { purchaseInvoiceId: true, amount: true, paidAt: true },
+        })
+
+        if (paidExpenses.length > 0) {
+            const paidByInvoice = new Map(
+                paidExpenses.map(t => [t.purchaseInvoiceId!, t])
+            )
+            const toUpdate = pendingPayReview.filter(n => paidByInvoice.has(n.purchaseInvoiceId!))
+            await Promise.allSettled(
+                toUpdate.map(n => {
+                    const tx = paidByInvoice.get(n.purchaseInvoiceId!)!
+                    return prisma.notification.update({
+                        where: { id: n.id },
+                        data: { status: "CONFIRMED", actionAmount: tx.amount, actionAt: tx.paidAt ?? new Date() },
+                    })
+                })
+            )
+            if (toUpdate.length > 0) changed = true
+        }
+    }
+
+    if (changed) {
         revalidatePath("/dashboard/notificacoes")
     }
 }
@@ -392,7 +502,7 @@ export async function getDailySummary(date?: Date) {
     }
 
     if (confirmed.length > 0) {
-        highlights.push(`✔️ ${confirmed.length} atendimento${confirmed.length > 1 ? "s" : ""} confirmado${confirmed.length > 1 ? "s" : ""} e faturado${confirmed.length > 1 ? "s" : ""}`)
+        highlights.push(`✔️ ${confirmed.length} atendimento${confirmed.length > 1 ? "s" : ""} concluído${confirmed.length > 1 ? "s" : ""}`)
     }
 
     if (totalBilled > 0 && totalExpected > 0) {

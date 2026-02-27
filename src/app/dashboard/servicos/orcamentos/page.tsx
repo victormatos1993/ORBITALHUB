@@ -168,10 +168,12 @@ export default function OrcamentosPage() {
     const [viewMode, setViewMode] = useState<ViewMode>("all")
     const [selectedMonth, setSelectedMonth] = useState(new Date())
     const [selectedCardIndex, setSelectedCardIndex] = useState(0)
+    const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null)
 
     const handleViewModeChange = (mode: ViewMode) => {
         setViewMode(mode)
         setSelectedCardIndex(0)
+        setSelectedDayIndex(null)
     }
 
     // QuoteModal (avulso)
@@ -266,15 +268,25 @@ export default function OrcamentosPage() {
     )
 
     const tableQuotes = useMemo(() => {
-        if (viewMode !== "3months" && viewMode !== "6months") return filteredQuotes
-        const cardMonth = addMonths(startOfMonth(selectedMonth), selectedCardIndex)
-        const mStart = startOfMonth(cardMonth)
-        const mEnd = endOfMonth(cardMonth)
-        return filteredQuotes.filter(q => {
-            const d = new Date(getQuoteDate(q) + "T12:00:00")
-            return isWithinInterval(d, { start: mStart, end: mEnd })
-        })
-    }, [filteredQuotes, viewMode, selectedMonth, selectedCardIndex])
+        if ((viewMode === "week" || viewMode === "month") && selectedDayIndex !== null && getDateRange) {
+            const days = eachDayOfInterval(getDateRange)
+            const selectedDay = days[selectedDayIndex]
+            if (selectedDay) {
+                const dayStr = format(selectedDay, "yyyy-MM-dd")
+                return filteredQuotes.filter(q => getQuoteDate(q) === dayStr)
+            }
+        }
+        if (viewMode === "3months" || viewMode === "6months") {
+            const cardMonth = addMonths(startOfMonth(selectedMonth), selectedCardIndex)
+            const mStart = startOfMonth(cardMonth)
+            const mEnd = endOfMonth(cardMonth)
+            return filteredQuotes.filter(q => {
+                const d = new Date(getQuoteDate(q) + "T12:00:00")
+                return isWithinInterval(d, { start: mStart, end: mEnd })
+            })
+        }
+        return filteredQuotes
+    }, [filteredQuotes, viewMode, selectedMonth, selectedCardIndex, selectedDayIndex, getDateRange])
 
     const periodCards = useMemo(() => {
         if (viewMode === "today" || viewMode === "all") return []
@@ -311,7 +323,7 @@ export default function OrcamentosPage() {
         return monthLabel
     }, [viewMode, selectedMonth, monthLabel])
 
-    const displayQuotes = (viewMode === "3months" || viewMode === "6months") ? tableQuotes : filteredQuotes
+    const displayQuotes = tableQuotes
 
     const handleStatusChange = async (quoteId: string, status: string) => {
         const res = await updateQuoteStatus(quoteId, status)
@@ -455,20 +467,52 @@ export default function OrcamentosPage() {
                     }}
                 >
                     {periodCards.map((card, i) => {
-                        const isSelectable = viewMode === "3months" || viewMode === "6months"
-                        const isSelected = isSelectable && selectedCardIndex === i
+                        const isMultiMonth = viewMode === "3months" || viewMode === "6months"
+                        const isDaySelectable = viewMode === "week" || viewMode === "month"
+                        const isSelectable = isMultiMonth || isDaySelectable
+                        const isSelected = isMultiMonth
+                            ? selectedCardIndex === i
+                            : isDaySelectable
+                                ? selectedDayIndex === i
+                                : false
+
+                        const handleCardClick = () => {
+                            if (isMultiMonth) {
+                                setSelectedCardIndex(i)
+                            } else if (isDaySelectable) {
+                                setSelectedDayIndex(prev => prev === i ? null : i)
+                            }
+                        }
+
+                        if (card.isToday) {
+                            return (
+                                <div
+                                    key={i}
+                                    onClick={isSelectable ? handleCardClick : undefined}
+                                    className={`rounded-xl border p-2 text-center transition-all shadow-md bg-blue-700 border-blue-700 dark:bg-white dark:border-gray-300 ${isSelectable ? "cursor-pointer" : ""} ${isSelected ? "ring-2 ring-offset-1" : ""}`}
+                                >
+                                    <p className="text-[10px] font-semibold uppercase text-white dark:text-slate-800">{card.label}</p>
+                                    <p className="text-[9px] opacity-70 text-white dark:text-slate-800">{card.sublabel}</p>
+                                    {card.count > 0 ? (
+                                        <p className="text-xs font-bold mt-0.5 text-white dark:text-slate-800">{card.count} orç.</p>
+                                    ) : (
+                                        <p className="text-[10px] mt-0.5 opacity-50 text-white dark:text-slate-800">—</p>
+                                    )}
+                                </div>
+                            )
+                        }
+
                         return (
                             <div
                                 key={i}
-                                onClick={isSelectable ? () => setSelectedCardIndex(i) : undefined}
+                                onClick={isSelectable ? handleCardClick : undefined}
                                 className={`rounded-xl border p-2 text-center transition-all ${isSelectable ? "cursor-pointer hover:ring-1 hover:ring-primary/30" : ""} ${isSelected
-                                        ? "border-primary bg-primary/5 ring-2 ring-primary/40 shadow-sm"
-                                        : card.isToday ? "border-primary/50 bg-primary/5"
-                                            : card.count > 0 ? "bg-primary/5 border-primary/20"
-                                                : "bg-muted/30 border-muted"
+                                    ? "border-primary bg-primary/5 ring-2 ring-primary/40 shadow-sm"
+                                    : card.count > 0 ? "bg-primary/5 border-primary/20"
+                                        : "bg-muted/30 border-muted"
                                     }`}
                             >
-                                <p className={`text-[10px] font-semibold uppercase ${isSelected || card.isToday ? "text-primary" : "text-muted-foreground"}`}>{card.label}</p>
+                                <p className={`text-[10px] font-semibold uppercase ${isSelected ? "text-primary" : "text-muted-foreground"}`}>{card.label}</p>
                                 <p className="text-[9px] text-muted-foreground">{card.sublabel}</p>
                                 {card.count > 0 ? (
                                     <p className="text-xs font-bold text-primary mt-0.5">{card.count} orç.</p>

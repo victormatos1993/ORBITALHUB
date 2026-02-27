@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { useTheme } from "next-themes"
 import {
     format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
     isWithinInterval, addMonths, subMonths, eachDayOfInterval, isSameDay
@@ -86,8 +85,6 @@ export function AgendaListClient({
     customers?: any[]
 }) {
     const router = useRouter()
-    const { resolvedTheme } = useTheme()
-    const isDark = resolvedTheme === "dark"
     const [events, setEvents] = useState(initialEvents)
     const [viewMode, setViewMode] = useState<ViewMode>("week")
     const [selectedMonth, setSelectedMonth] = useState(new Date())
@@ -351,22 +348,18 @@ export function AgendaListClient({
                         }
 
                         if (card.isToday) {
-                            const todayBg = isDark ? "#ffffff" : "#1d4ed8"
-                            const todayBorder = isDark ? "#d1d5db" : "#1d4ed8"
-                            const todayText = isDark ? "#1e293b" : "#ffffff"
                             return (
                                 <div
                                     key={i}
                                     onClick={isSelectable ? handleCardClick : undefined}
-                                    className={`rounded-xl border p-2 text-center transition-all shadow-md ${isSelectable ? "cursor-pointer" : ""} ${isSelected ? "ring-2 ring-offset-1" : ""}`}
-                                    style={{ backgroundColor: todayBg, borderColor: todayBorder }}
+                                    className={`rounded-xl border p-2 text-center transition-all shadow-md bg-blue-700 border-blue-700 dark:bg-white dark:border-gray-300 ${isSelectable ? "cursor-pointer" : ""} ${isSelected ? "ring-2 ring-offset-1" : ""}`}
                                 >
-                                    <p className="text-[10px] font-semibold uppercase" style={{ color: todayText }}>{card.label}</p>
-                                    <p className="text-[9px] opacity-70" style={{ color: todayText }}>{card.sublabel}</p>
+                                    <p className="text-[10px] font-semibold uppercase text-white dark:text-slate-800">{card.label}</p>
+                                    <p className="text-[9px] opacity-70 text-white dark:text-slate-800">{card.sublabel}</p>
                                     {card.count > 0 ? (
-                                        <p className="text-xs font-bold mt-0.5" style={{ color: todayText }}>{card.count} ev.</p>
+                                        <p className="text-xs font-bold mt-0.5 text-white dark:text-slate-800">{card.count} ev.</p>
                                     ) : (
-                                        <p className="text-[10px] mt-0.5 opacity-50" style={{ color: todayText }}>—</p>
+                                        <p className="text-[10px] mt-0.5 opacity-50 text-white dark:text-slate-800">—</p>
                                     )}
                                 </div>
                             )

@@ -92,6 +92,8 @@ const PRODUTOS_MOCK: string[] = []
 const SERVICOS_MOCK: string[] = []
 const ORCAMENTOS_MOCK: string[] = []
 
+const EMPTY_EVENT_TYPES: string[] = []
+
 export function EventModal({
     open,
     onOpenChange,
@@ -112,7 +114,7 @@ export function EventModal({
     services = [],
     quotes = [],
     customers = [],
-    eventTypes = [],
+    eventTypes = EMPTY_EVENT_TYPES,
     onSave,
     onDelete,
     paymentStatus,
@@ -204,7 +206,9 @@ export function EventModal({
     const [recurrenceCount, setRecurrenceCount] = useState(4)
 
     useEffect(() => {
-        setTiposCustomizados(Array.from(new Set([...TIPOS_DE_EVENTO_MOCK, ...eventTypes])))
+        if (eventTypes.length > 0 || TIPOS_DE_EVENTO_MOCK.length > 0) {
+            setTiposCustomizados(Array.from(new Set([...TIPOS_DE_EVENTO_MOCK, ...eventTypes])))
+        }
     }, [eventTypes])
 
     // ── Helpers para montar Date a partir dos states separados ──
