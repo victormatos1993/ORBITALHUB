@@ -251,7 +251,7 @@ export async function createPurchaseInvoice(data: CreatePurchaseInvoiceData) {
                 type: "PAYMENT_REVIEW",
                 targetRole: "FINANCEIRO",
                 title: `Conta a pagar — ${invoiceLabel}`,
-                description: `Revise o vencimento e forma de pagamento da compra de mercadoria (${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalCost)}).`,
+                description: `Revise o vencimento da compra de mercadoria (${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalCost)}).`,
                 purchaseInvoiceId: invoiceId,
                 expectedAmount: totalCost,
                 status: "PENDING",

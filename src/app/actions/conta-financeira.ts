@@ -353,3 +353,153 @@ export async function getCreditCardInvoice(contaId: string, month: number, year:
         return { error: "Erro ao buscar fatura do cartão" }
     }
 }
+
+// ── Depósito ─────────────────────────────────────────────────────────
+
+export async function depositoConta(contaId: string, amount: number, justification: string) {
+    const { tenantId } = await getTenantInfo()
+    if (!tenantId) return { error: "Não autorizado" }
+    if (amount <= 0) return { error: "Valor deve ser positivo" }
+    if (!justification.trim()) return { error: "Justificativa é obrigatória" }
+
+    try {
+        const conta = await prisma.contaFinanceira.findFirst({
+            where: { id: contaId, userId: tenantId },
+        })
+        if (!conta) return { error: "Conta não encontrada" }
+
+        await prisma.$transaction([
+            prisma.contaFinanceira.update({
+                where: { id: contaId },
+                data: { balance: { increment: amount } },
+            }),
+            prisma.transaction.create({
+                data: {
+                    description: `Depósito: ${justification}`,
+                    amount,
+                    type: "income",
+                    status: "paid",
+                    date: new Date(),
+                    userId: tenantId,
+                    contaFinanceiraId: contaId,
+                },
+            }),
+        ])
+
+        revalidatePath("/dashboard/financeiro")
+        return { success: true }
+    } catch (error) {
+        console.error("Erro ao depositar:", error)
+        return { error: "Erro ao realizar depósito" }
+    }
+}
+
+// ── Retirada ─────────────────────────────────────────────────────────
+
+export async function retiradaConta(contaId: string, amount: number, justification: string) {
+    const { tenantId } = await getTenantInfo()
+    if (!tenantId) return { error: "Não autorizado" }
+    if (amount <= 0) return { error: "Valor deve ser positivo" }
+    if (!justification.trim()) return { error: "Justificativa é obrigatória" }
+
+    try {
+        const conta = await prisma.contaFinanceira.findFirst({
+            where: { id: contaId, userId: tenantId },
+        })
+        if (!conta) return { error: "Conta não encontrada" }
+
+        await prisma.$transaction([
+            prisma.contaFinanceira.update({
+                where: { id: contaId },
+                data: { balance: { decrement: amount } },
+            }),
+            prisma.transaction.create({
+                data: {
+                    description: `Retirada: ${justification}`,
+                    amount,
+                    type: "expense",
+                    status: "paid",
+                    date: new Date(),
+                    userId: tenantId,
+                    contaFinanceiraId: contaId,
+                },
+            }),
+        ])
+
+        revalidatePath("/dashboard/financeiro")
+        return { success: true }
+    } catch (error) {
+        console.error("Erro ao retirar:", error)
+        return { error: "Erro ao realizar retirada" }
+    }
+}
+
+// ── Transferência entre contas ───────────────────────────────────────
+
+export async function transferenciaConta(
+    origemId: string,
+    destinoId: string,
+    amount: number,
+    justification: string
+) {
+    const { tenantId } = await getTenantInfo()
+    if (!tenantId) return { error: "Não autorizado" }
+    if (amount <= 0) return { error: "Valor deve ser positivo" }
+    if (!justification.trim()) return { error: "Justificativa é obrigatória" }
+    if (origemId === destinoId) return { error: "Conta de origem e destino devem ser diferentes" }
+
+    try {
+        const [origem, destino] = await Promise.all([
+            prisma.contaFinanceira.findFirst({ where: { id: origemId, userId: tenantId } }),
+            prisma.contaFinanceira.findFirst({ where: { id: destinoId, userId: tenantId } }),
+        ])
+        if (!origem) return { error: "Conta de origem não encontrada" }
+        if (!destino) return { error: "Conta de destino não encontrada" }
+
+        const now = new Date()
+        const desc = justification.trim() || "Transferência entre contas"
+
+        await prisma.$transaction([
+            // Debita origem
+            prisma.contaFinanceira.update({
+                where: { id: origemId },
+                data: { balance: { decrement: amount } },
+            }),
+            // Credita destino
+            prisma.contaFinanceira.update({
+                where: { id: destinoId },
+                data: { balance: { increment: amount } },
+            }),
+            // Transação de saída na origem
+            prisma.transaction.create({
+                data: {
+                    description: `Transferência para ${(destino as any).name}: ${desc}`,
+                    amount,
+                    type: "expense",
+                    status: "paid",
+                    date: now,
+                    userId: tenantId,
+                    contaFinanceiraId: origemId,
+                },
+            }),
+            // Transação de entrada no destino
+            prisma.transaction.create({
+                data: {
+                    description: `Transferência de ${(origem as any).name}: ${desc}`,
+                    amount,
+                    type: "income",
+                    status: "paid",
+                    date: now,
+                    userId: tenantId,
+                    contaFinanceiraId: destinoId,
+                },
+            }),
+        ])
+
+        revalidatePath("/dashboard/financeiro")
+        return { success: true }
+    } catch (error) {
+        console.error("Erro ao transferir:", error)
+        return { error: "Erro ao realizar transferência" }
+    }
+}

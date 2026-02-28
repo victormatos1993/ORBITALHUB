@@ -69,9 +69,13 @@ export function ContasReceberClient({ contas }: { contas: ContaReceber[] }) {
     }
 
     const handleConfirmar = async (id: string) => {
+        const conta = contas.find(c => c.id === id)
+        if (!conta) return
         setLoading(id)
         try {
-            const result = await confirmarPagamento(id)
+            const result = await confirmarPagamento(id, [
+                { contaFinanceiraId: "", amount: conta.amount }
+            ])
             if (result.error) {
                 toast.error(result.error)
             } else {

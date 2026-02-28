@@ -476,9 +476,13 @@ export async function updateTransaction(id: string, formData: z.infer<typeof tra
 
 /**
  * Confirma o pagamento/recebimento de uma transação.
- * Move do regime de competência para o regime de caixa.
+ * Aceita múltiplas formas de pagamento (split).
+ * Valida saldo/limite antes de processar.
  */
-export async function confirmarPagamento(transactionId: string, contaFinanceiraId?: string) {
+export async function confirmarPagamento(
+    transactionId: string,
+    pagamentos: { contaFinanceiraId: string; amount: number }[]
+) {
     const { tenantId } = await getTenantInfo()
     if (!tenantId) return { error: "Não autorizado" }
 
@@ -489,14 +493,118 @@ export async function confirmarPagamento(transactionId: string, contaFinanceiraI
         if (!tx) return { error: "Transação não encontrada" }
         if (tx.status === 'paid') return { error: "Transação já está paga" }
 
-        await prisma.transaction.update({
-            where: { id: transactionId },
-            data: {
-                status: 'paid',
-                paidAt: new Date(),
-                ...(contaFinanceiraId ? { contaFinanceiraId } : {}),
-            },
+        // Filtrar entradas válidas (com contaFinanceiraId preenchido)
+        const validPagamentos = pagamentos.filter(p => p.contaFinanceiraId && p.contaFinanceiraId.trim() !== "")
+
+        // Se não há contas especificadas (ex: contas a receber), apenas marcar como pago
+        // e incrementar a conta vinculada (se houver)
+        if (validPagamentos.length === 0) {
+            await prisma.transaction.update({
+                where: { id: transactionId },
+                data: { status: 'paid', paidAt: new Date() },
+            })
+
+            // Incrementar saldo da conta vinculada (para recebimentos)
+            if (tx.contaFinanceiraId && tx.type === 'income') {
+                await prisma.contaFinanceira.update({
+                    where: { id: tx.contaFinanceiraId },
+                    data: { balance: { increment: Number(tx.amount) } },
+                })
+            }
+
+            revalidatePath("/dashboard/financeiro")
+            revalidatePath("/dashboard/financeiro/transacoes")
+            revalidatePath("/dashboard/financeiro/contas-pagar")
+            revalidatePath("/dashboard/financeiro/contas-receber")
+            return { success: true }
+        }
+
+        // Verificar se o total dos pagamentos cobre o valor
+        const totalPagamento = validPagamentos.reduce((s, p) => s + p.amount, 0)
+        const txAmount = Number(tx.amount)
+        if (Math.abs(totalPagamento - txAmount) > 0.01) {
+            return { error: `O total dos pagamentos (R$ ${totalPagamento.toFixed(2)}) deve ser igual ao valor da conta (R$ ${txAmount.toFixed(2)})` }
+        }
+
+        // Buscar todas as contas envolvidas
+        const contaIds = validPagamentos.map(p => p.contaFinanceiraId)
+        const contas = await prisma.contaFinanceira.findMany({
+            where: { id: { in: contaIds }, userId: tenantId },
         })
+
+        // Validar cada pagamento
+        for (const pag of validPagamentos) {
+            const conta = contas.find(c => c.id === pag.contaFinanceiraId) as any
+            if (!conta) return { error: `Conta não encontrada` }
+
+            if (conta.subType === "CARTAO_CREDITO") {
+                const creditLimit = Number(conta.creditLimit || 0)
+                const used = Math.abs(Number(conta.balance || 0))
+                const available = creditLimit - used
+                if (pag.amount > available + 0.01) {
+                    return {
+                        error: `Limite insuficiente no cartão "${conta.name}". Disponível: R$ ${available.toFixed(2)}, necessário: R$ ${pag.amount.toFixed(2)}`
+                    }
+                }
+            } else {
+                const balance = Number(conta.balance || 0)
+                if (pag.amount > balance + 0.01) {
+                    return {
+                        error: `Saldo insuficiente na conta "${conta.name}". Disponível: R$ ${balance.toFixed(2)}, necessário: R$ ${pag.amount.toFixed(2)}`
+                    }
+                }
+            }
+        }
+
+        // Tudo validado — executar em transação atômica
+        const operations: any[] = []
+
+        // 1. Marcar transação como paga (vincula à primeira conta)
+        const isSplit = validPagamentos.length > 1
+        operations.push(
+            prisma.transaction.update({
+                where: { id: transactionId },
+                data: {
+                    status: 'paid',
+                    paidAt: new Date(),
+                    contaFinanceiraId: validPagamentos[0].contaFinanceiraId,
+                    ...(isSplit ? {
+                        amount: validPagamentos[0].amount,
+                        description: `Pagamento parcial: ${tx.description}`,
+                    } : {}),
+                },
+            })
+        )
+
+        // 2. Para cada pagamento, atualizar saldo/limite
+        for (const pag of validPagamentos) {
+            operations.push(
+                prisma.contaFinanceira.update({
+                    where: { id: pag.contaFinanceiraId },
+                    data: { balance: { decrement: pag.amount } },
+                })
+            )
+
+            // Se for split (mais de 1 forma), criar transações extras para as contas adicionais
+            if (validPagamentos.length > 1 && pag.contaFinanceiraId !== validPagamentos[0].contaFinanceiraId) {
+                operations.push(
+                    prisma.transaction.create({
+                        data: {
+                            description: `Pagamento parcial: ${tx.description}`,
+                            amount: pag.amount,
+                            type: "expense",
+                            status: "paid",
+                            date: new Date(),
+                            paidAt: new Date(),
+                            userId: tenantId,
+                            contaFinanceiraId: pag.contaFinanceiraId,
+                        },
+                    })
+                )
+            }
+        }
+
+        await prisma.$transaction(operations)
 
         revalidatePath("/dashboard/financeiro")
         revalidatePath("/dashboard/financeiro/transacoes")
@@ -536,6 +644,7 @@ export async function getContasAPagar() {
             categoryCode: t.category?.code,
             supplierName: t.supplier?.name,
             contaName: t.contaFinanceira?.name,
+            purchaseInvoiceId: t.purchaseInvoiceId || null,
         }))
     } catch (error) {
         console.error("Erro ao buscar contas a pagar:", error)

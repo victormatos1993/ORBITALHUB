@@ -4,7 +4,7 @@ import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import {
     createContaFinanceira, updateContaFinanceira, deleteContaFinanceira,
-    toggleContaFinanceira, getContaExtrato, getCreditCardInvoice,
+    toggleContaFinanceira,
 } from "@/app/actions/conta-financeira"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,17 +18,14 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import CurrencyInput from "react-currency-input-field"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import {
     Plus, Pencil, Trash2, Landmark, Wallet, Smartphone, Star,
-    CreditCard, Power, PowerOff, Eye, ArrowLeft, ArrowDownLeft,
-    ArrowUpRight, ChevronLeft, ChevronRight, Receipt,
+    CreditCard, ArrowDownLeft,
+    ArrowUpRight, Receipt,
 } from "lucide-react"
-import {
-    startOfWeek, endOfWeek, startOfMonth, endOfMonth,
-    addMonths, subMonths, format, isToday,
-} from "date-fns"
-import { ptBR } from "date-fns/locale"
+
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -47,31 +44,7 @@ interface ContaFinanceira {
     creditLimit: number | null
 }
 
-type ViewMode = "day" | "week" | "month" | "3months" | "6months" | "all"
 
-interface ExtractTx {
-    id: string
-    description: string
-    amount: number
-    type: string
-    status: string
-    date: string
-    categoryName: string | null
-    customerName: string | null
-    supplierName: string | null
-}
-
-interface InvoiceData {
-    month: number
-    year: number
-    periodStart: string
-    periodEnd: string
-    dueDate: string
-    total: number
-    itemCount: number
-    status: string
-    items: ExtractTx[]
-}
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -91,34 +64,7 @@ function formatBRL(v: number) {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v)
 }
 
-const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
-    { value: "day", label: "Hoje" },
-    { value: "week", label: "Semana" },
-    { value: "month", label: "Mês" },
-    { value: "3months", label: "3 Meses" },
-    { value: "6months", label: "6 Meses" },
-    { value: "all", label: "Tudo" },
-]
 
-function getDateRange(mode: ViewMode, ref: Date): { start?: Date; end?: Date } {
-    const now = ref
-    switch (mode) {
-        case "day":
-            return { start: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0), end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59) }
-        case "week":
-            return { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfWeek(now, { weekStartsOn: 0 }) }
-        case "month":
-            return { start: startOfMonth(now), end: endOfMonth(now) }
-        case "3months":
-            return { start: addMonths(startOfMonth(now), -2), end: endOfMonth(now) }
-        case "6months":
-            return { start: addMonths(startOfMonth(now), -5), end: endOfMonth(now) }
-        default:
-            return {}
-    }
-}
-
-const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
 // ── Component ────────────────────────────────────────────────────────
 
@@ -141,20 +87,8 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
     const [formCreditLimit, setFormCreditLimit] = useState("")
     const [loading, setLoading] = useState(false)
 
-    // ── Detail state ──
-    const [detailConta, setDetailConta] = useState<ContaFinanceira | null>(null)
-    const [detailOpen, setDetailOpen] = useState(false)
-    const [detailViewMode, setDetailViewMode] = useState<ViewMode>("month")
-    const [detailTransactions, setDetailTransactions] = useState<ExtractTx[]>([])
-    const [detailLoading, setDetailLoading] = useState(false)
 
-    // ── Invoice state ──
-    const [invoiceConta, setInvoiceConta] = useState<ContaFinanceira | null>(null)
-    const [invoiceOpen, setInvoiceOpen] = useState(false)
-    const [invoiceMonth, setInvoiceMonth] = useState(new Date().getMonth())
-    const [invoiceYear, setInvoiceYear] = useState(new Date().getFullYear())
-    const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null)
-    const [invoiceLoading, setInvoiceLoading] = useState(false)
+
 
     // ── Filtered lists ──
     const contasRecebimento = useMemo(() => contas.filter(c => c.purpose === "RECEBIMENTO"), [contas])
@@ -194,7 +128,7 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
         if (!formName.trim()) { toast.error("Nome é obrigatório"); return }
         if (formPurpose === "PAGAMENTO" && formSubType === "CARTAO_CREDITO") {
             if (!formClosingDay || !formDueDay) {
-                toast.error("Informe o dia de fechamento e vencimento da fatura")
+                toast.error("Informe a melhor data de compra e o dia de vencimento da fatura")
                 return
             }
         }
@@ -207,7 +141,7 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
                 purpose: formPurpose,
                 subType: formPurpose === "PAGAMENTO" ? formSubType : null,
                 isDefault: formIsDefault,
-                balance: parseFloat(formBalance.replace(/\./g, "").replace(",", ".") || "0") || 0,
+
                 closingDay: formClosingDay ? parseInt(formClosingDay) : null,
                 dueDay: formDueDay ? parseInt(formDueDay) : null,
                 cardBrand: formCardBrand || null,
@@ -243,60 +177,13 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
         else { toast.success(result.active ? "Conta habilitada!" : "Conta desabilitada!"); router.refresh() }
     }
 
-    // ── Extrato ──
-    const openExtrato = async (conta: ContaFinanceira) => {
-        setDetailConta(conta)
-        setDetailOpen(true)
-        setDetailViewMode("month")
-        await fetchExtrato(conta.id, "month")
+    // ── Extrato / Fatura (navega para página inteira) ──
+    const openExtrato = (conta: ContaFinanceira) => {
+        router.push(`/dashboard/financeiro/contas/${conta.id}/extrato`)
     }
 
-    const fetchExtrato = async (contaId: string, mode: ViewMode) => {
-        setDetailLoading(true)
-        try {
-            const { start, end } = getDateRange(mode, new Date())
-            const result = await getContaExtrato(contaId, start, end)
-            setDetailTransactions(result.transactions || [])
-        } finally {
-            setDetailLoading(false)
-        }
-    }
-
-    const handleDetailViewChange = async (mode: ViewMode) => {
-        setDetailViewMode(mode)
-        if (detailConta) await fetchExtrato(detailConta.id, mode)
-    }
-
-    // ── Fatura do Cartão ──
-    const openInvoice = async (conta: ContaFinanceira) => {
-        setInvoiceConta(conta)
-        setInvoiceOpen(true)
-        const now = new Date()
-        setInvoiceMonth(now.getMonth())
-        setInvoiceYear(now.getFullYear())
-        await fetchInvoice(conta.id, now.getMonth(), now.getFullYear())
-    }
-
-    const fetchInvoice = async (contaId: string, month: number, year: number) => {
-        setInvoiceLoading(true)
-        try {
-            const result = await getCreditCardInvoice(contaId, month, year)
-            if (result.error) { toast.error(result.error); return }
-            setInvoiceData((result as any).invoice || null)
-        } finally {
-            setInvoiceLoading(false)
-        }
-    }
-
-    const navigateInvoice = async (dir: number) => {
-        if (!invoiceConta) return
-        let m = invoiceMonth + dir
-        let y = invoiceYear
-        if (m < 0) { m = 11; y-- }
-        if (m > 11) { m = 0; y++ }
-        setInvoiceMonth(m)
-        setInvoiceYear(y)
-        await fetchInvoice(invoiceConta.id, m, y)
+    const openInvoice = (conta: ContaFinanceira) => {
+        router.push(`/dashboard/financeiro/contas/${conta.id}/fatura`)
     }
 
     // ── RENDER CARD ──
@@ -307,7 +194,8 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
         return (
             <div
                 key={conta.id}
-                className={`rounded-xl border bg-card p-4 hover:shadow-md transition-all ${!conta.active ? "opacity-50" : ""}`}
+                className={`rounded-xl border bg-card p-4 hover:shadow-md transition-all cursor-pointer ${!conta.active ? "opacity-50" : ""}`}
+                onClick={() => isCartao ? openInvoice(conta) : openExtrato(conta)}
             >
                 <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -325,7 +213,7 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
                                     <>
                                         {conta.cardBrand && <Badge variant="outline" className="text-[10px]">{conta.cardBrand}</Badge>}
                                         <Badge variant="secondary" className="text-[10px]">
-                                            Fecha dia {conta.closingDay} · Vence dia {conta.dueDay}
+                                            Compra até dia {conta.closingDay} · Vence dia {conta.dueDay}
                                         </Badge>
                                     </>
                                 ) : (
@@ -334,13 +222,8 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
                             </div>
                         </div>
                     </div>
-                    <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Visualizar" onClick={() => isCartao ? openInvoice(conta) : openExtrato(conta)}>
-                            <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" title={conta.active ? "Desabilitar" : "Habilitar"} onClick={() => handleToggle(conta.id)}>
-                            {conta.active ? <PowerOff className="h-3.5 w-3.5 text-muted-foreground" /> : <Power className="h-3.5 w-3.5 text-emerald-500" />}
-                        </Button>
+                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <Switch checked={conta.active} onCheckedChange={() => handleToggle(conta.id)} className="scale-75" />
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditForm(conta)}>
                             <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -408,8 +291,42 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
                         </Button>
                     </div>
 
+                    {/* ── Caixa Geral — Saldo Total ── */}
+                    {(() => {
+                        const caixaGeral = contasRecebimento.find(c => c.isDefault && c.type === "CAIXA")
+                        return (
+                            <div
+                                className="rounded-xl border bg-card p-5 cursor-pointer hover:shadow-md transition-all"
+                                onClick={() => {
+                                    if (caixaGeral) openExtrato(caixaGeral)
+                                }}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                                        <Wallet className="h-6 w-6 text-emerald-500" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-muted-foreground">Caixa Geral — Saldo Total de Recebimento</p>
+                                        <p className="text-2xl font-bold text-emerald-600">
+                                            {formatBRL(contasRecebimento.reduce((sum, c) => sum + c.balance, 0))}
+                                        </p>
+                                    </div>
+                                    {caixaGeral && (
+                                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                            <Switch checked={caixaGeral.active} onCheckedChange={() => handleToggle(caixaGeral.id)} className="scale-75" />
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditForm(caixaGeral)}>
+                                                <Pencil className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </div>
+                                    )}
+                                    <span className="text-sm text-muted-foreground">{contasRecebimento.length} conta{contasRecebimento.length !== 1 ? "s" : ""}</span>
+                                </div>
+                            </div>
+                        )
+                    })()}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {contasRecebimento.map(renderContaCard)}
+                        {contasRecebimento.filter(c => !(c.isDefault && c.type === "CAIXA")).map(renderContaCard)}
                     </div>
 
                     {contasRecebimento.length === 0 && (
@@ -534,20 +451,7 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
                             </div>
                         )}
 
-                        {/* Saldo (só contas bancárias) */}
-                        {!isCartaoForm && (
-                            <div className="space-y-1.5">
-                                <Label>Saldo Atual</Label>
-                                <CurrencyInput
-                                    placeholder="R$ 0,00"
-                                    decimalsLimit={2}
-                                    prefix="R$ "
-                                    value={formBalance}
-                                    onValueChange={v => setFormBalance(v || "")}
-                                    className="flex h-9 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                />
-                            </div>
-                        )}
+
 
                         {/* Campos de cartão de crédito */}
                         {isCartaoForm && (
@@ -569,7 +473,7 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1.5">
-                                        <Label>Dia de Fechamento</Label>
+                                        <Label>Melhor Data de Compra</Label>
                                         <Input
                                             type="number"
                                             min={1} max={31}
@@ -628,183 +532,7 @@ export function ContasBancariasClient({ contas }: { contas: ContaFinanceira[] })
                 </DialogContent>
             </Dialog>
 
-            {/* ═══━━━ EXTRATO DIALOG ━━━═══ */}
-            <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-                <DialogContent className="sm:!max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Receipt className="h-5 w-5 text-primary" />
-                            Extrato — {detailConta?.name}
-                        </DialogTitle>
-                    </DialogHeader>
 
-                    {/* Filtro de período */}
-                    <div className="flex flex-wrap gap-1.5">
-                        {VIEW_OPTIONS.map(opt => (
-                            <Button
-                                key={opt.value}
-                                size="sm"
-                                variant={detailViewMode === opt.value ? "default" : "outline"}
-                                className="rounded-lg text-xs h-7"
-                                onClick={() => handleDetailViewChange(opt.value)}
-                            >
-                                {opt.label}
-                            </Button>
-                        ))}
-                    </div>
-
-                    {/* Transações */}
-                    {detailLoading ? (
-                        <div className="text-center py-8 text-muted-foreground text-sm">Carregando...</div>
-                    ) : detailTransactions.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                            <Receipt className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                            <p className="text-sm">Nenhuma transação neste período</p>
-                        </div>
-                    ) : (
-                        <div className="rounded-xl border overflow-hidden">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50">
-                                    <tr>
-                                        <th className="text-left p-2 font-medium">Data</th>
-                                        <th className="text-left p-2 font-medium">Descrição</th>
-                                        <th className="text-left p-2 font-medium">Categoria</th>
-                                        <th className="text-right p-2 font-medium">Valor</th>
-                                        <th className="text-center p-2 font-medium">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {detailTransactions.map(tx => (
-                                        <tr key={tx.id} className="border-t">
-                                            <td className="p-2 text-xs whitespace-nowrap">
-                                                {new Date(tx.date).toLocaleDateString("pt-BR")}
-                                            </td>
-                                            <td className="p-2">
-                                                <div className="font-medium">{tx.description}</div>
-                                                {(tx.customerName || tx.supplierName) && (
-                                                    <div className="text-xs text-muted-foreground">{tx.customerName || tx.supplierName}</div>
-                                                )}
-                                            </td>
-                                            <td className="p-2 text-xs text-muted-foreground">{tx.categoryName || "—"}</td>
-                                            <td className={`p-2 text-right font-medium ${tx.type === "income" ? "text-emerald-600" : "text-destructive"}`}>
-                                                {tx.type === "income" ? "+" : "-"}{formatBRL(tx.amount)}
-                                            </td>
-                                            <td className="p-2 text-center">
-                                                <Badge variant={tx.status === "paid" ? "default" : "secondary"} className="text-[10px]">
-                                                    {tx.status === "paid" ? "Pago" : "Pendente"}
-                                                </Badge>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
-
-            {/* ═══━━━ FATURA DO CARTÃO ━━━═══ */}
-            <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
-                <DialogContent className="sm:!max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <CreditCard className="h-5 w-5 text-violet-500" />
-                            Fatura — {invoiceConta?.name}
-                            {invoiceConta?.cardBrand && (
-                                <Badge variant="outline" className="text-xs">{invoiceConta.cardBrand}</Badge>
-                            )}
-                        </DialogTitle>
-                    </DialogHeader>
-
-                    {/* Navegação de mês */}
-                    <div className="flex items-center justify-between">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => navigateInvoice(-1)}>
-                            <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <span className="text-sm font-semibold">
-                            {MONTH_NAMES[invoiceMonth]} {invoiceYear}
-                        </span>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => navigateInvoice(1)}>
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </div>
-
-                    {invoiceLoading ? (
-                        <div className="text-center py-8 text-muted-foreground text-sm">Carregando fatura...</div>
-                    ) : !invoiceData ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                            <CreditCard className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                            <p className="text-sm">Nenhum dado disponível</p>
-                        </div>
-                    ) : (
-                        <>
-                            {/* Resumo da fatura */}
-                            <div className="rounded-xl border p-4 space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-muted-foreground">Vencimento</span>
-                                    <span className="font-medium text-sm">
-                                        {new Date(invoiceData.dueDate).toLocaleDateString("pt-BR")}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-muted-foreground">Lançamentos</span>
-                                    <span className="font-medium text-sm">{invoiceData.itemCount}</span>
-                                </div>
-                                <div className="flex items-center justify-between border-t pt-3">
-                                    <span className="text-base font-semibold">Total da Fatura</span>
-                                    <span className="text-xl font-bold text-violet-600">{formatBRL(invoiceData.total)}</span>
-                                </div>
-                                <div className="flex justify-end">
-                                    <Badge
-                                        className={`text-xs ${invoiceData.status === "paid"
-                                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                                            : invoiceData.status === "empty"
-                                                ? "bg-muted text-muted-foreground"
-                                                : "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                                            }`}
-                                        variant="outline"
-                                    >
-                                        {invoiceData.status === "paid" ? "✓ Paga" : invoiceData.status === "empty" ? "Sem lançamentos" : "Em aberto"}
-                                    </Badge>
-                                </div>
-                            </div>
-
-                            {/* Lançamentos */}
-                            {invoiceData.items.length > 0 && (
-                                <div className="rounded-xl border overflow-hidden">
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-muted/50">
-                                            <tr>
-                                                <th className="text-left p-2 font-medium">Data</th>
-                                                <th className="text-left p-2 font-medium">Descrição</th>
-                                                <th className="text-right p-2 font-medium">Valor</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {invoiceData.items.map(item => (
-                                                <tr key={item.id} className="border-t">
-                                                    <td className="p-2 text-xs whitespace-nowrap">
-                                                        {new Date(item.date).toLocaleDateString("pt-BR")}
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <div className="font-medium">{item.description}</div>
-                                                        {item.supplierName && (
-                                                            <div className="text-xs text-muted-foreground">{item.supplierName}</div>
-                                                        )}
-                                                    </td>
-                                                    <td className="p-2 text-right font-medium">
-                                                        {formatBRL(item.amount)}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </>
-                    )}
-                </DialogContent>
-            </Dialog>
         </div>
     )
 }

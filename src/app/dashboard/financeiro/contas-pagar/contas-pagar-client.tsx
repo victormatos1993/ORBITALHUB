@@ -33,11 +33,13 @@ interface ContaPagar {
     categoryId?: string | null
     supplierId?: string | null
     contaFinanceiraId?: string | null
+    purchaseInvoiceId?: string | null
 }
 
 interface CategoryOption { id: string; name: string; code?: string | null; level?: number | null }
 interface SupplierOption { id: string; name: string }
-interface ContaOption { id: string; name: string; tipo: string; isDefault: boolean }
+interface ContaOption { id: string; name: string; tipo: string; isDefault: boolean; subType?: string | null; balance: number; creditLimit?: number | null }
+interface PaymentEntry { contaFinanceiraId: string; amount: string }
 
 type ViewMode = "all" | "month" | "week" | "today" | "3months" | "6months"
 type RecurrenceType = "unique" | "monthly" | "weekly" | "installment"
@@ -96,7 +98,7 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
 
     // ── Dialog de Pagamento ──
     const [payingConta, setPayingConta] = useState<ContaPagar | null>(null)
-    const [payContaFinanceiraId, setPayContaFinanceiraId] = useState("")
+    const [payEntries, setPayEntries] = useState<PaymentEntry[]>([{ contaFinanceiraId: "", amount: "" }])
 
     // ── Formulário ──
     const [description, setDescription] = useState("")
@@ -112,23 +114,50 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
     // ── Ações ──
     const openPayDialog = (conta: ContaPagar) => {
         setPayingConta(conta)
-        setPayContaFinanceiraId(conta.contaName ? "" : "")
+        setPayEntries([{ contaFinanceiraId: "", amount: String(conta.amount) }])
+    }
+
+    const addPayEntry = () => {
+        setPayEntries(prev => [...prev, { contaFinanceiraId: "", amount: "" }])
+    }
+
+    const removePayEntry = (index: number) => {
+        setPayEntries(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const updatePayEntry = (index: number, field: keyof PaymentEntry, value: string) => {
+        setPayEntries(prev => prev.map((e, i) => i === index ? { ...e, [field]: value } : e))
+    }
+
+    const getAvailable = (cf: ContaOption) => {
+        if (cf.subType === "CARTAO_CREDITO") {
+            return (cf.creditLimit || 0) - Math.abs(cf.balance)
+        }
+        return cf.balance
     }
 
     const handleConfirmarPagamento = async () => {
         if (!payingConta) return
-        if (!payContaFinanceiraId) {
-            toast.error("Selecione a conta de onde sairá o pagamento")
+        const parsed = payEntries.map(e => ({
+            contaFinanceiraId: e.contaFinanceiraId,
+            amount: parseFloat(e.amount.replace(/\./g, "").replace(",", ".") || "0"),
+        }))
+        if (parsed.some(p => !p.contaFinanceiraId)) {
+            toast.error("Selecione a conta de pagamento em todas as entradas")
+            return
+        }
+        if (parsed.some(p => p.amount <= 0)) {
+            toast.error("Informe um valor válido em todas as entradas")
             return
         }
         setLoading(payingConta.id)
         try {
-            const result = await confirmarPagamento(payingConta.id, payContaFinanceiraId)
+            const result = await confirmarPagamento(payingConta.id, parsed)
             if (result.error) toast.error(result.error)
             else {
                 toast.success("Pagamento confirmado!")
                 setPayingConta(null)
-                setPayContaFinanceiraId("")
+                setPayEntries([{ contaFinanceiraId: "", amount: "" }])
                 router.refresh()
             }
         } finally { setLoading(null) }
@@ -648,12 +677,24 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                             </div>
                         )}
 
+                        {/* Info: campos travados para entrada de mercadoria */}
+                        {editingConta?.purchaseInvoiceId && (
+                            <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 flex items-start gap-2 md:col-span-2">
+                                <svg className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                </svg>
+                                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Despesa vinculada à Entrada de Mercadoria</p>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {/* Descrição */}
                             <div className="md:col-span-2 space-y-1.5">
                                 <Label htmlFor="desc">Descrição *</Label>
                                 <Input id="desc" placeholder="Ex: Aluguel, Conta de Luz, Material..." value={description}
-                                    onChange={e => setDescription(e.target.value)} required />
+                                    onChange={e => setDescription(e.target.value)} required
+                                    disabled={!!editingConta?.purchaseInvoiceId}
+                                    className={editingConta?.purchaseInvoiceId ? "opacity-60 cursor-not-allowed bg-muted" : ""} />
                             </div>
 
                             {/* Valor */}
@@ -662,9 +703,10 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                                     {recurrence === "installment" ? "Valor Total (será dividido)" : "Valor (R$)"} *
                                 </Label>
                                 <CurrencyInput id="amt"
-                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${editingConta?.purchaseInvoiceId ? "opacity-60 cursor-not-allowed bg-muted" : ""}`}
                                     placeholder="R$ 0,00" decimalsLimit={2} decimalSeparator="," groupSeparator="." prefix="R$ "
-                                    value={amount} onValueChange={v => setAmount(v || "")} />
+                                    value={amount} onValueChange={v => setAmount(v || "")}
+                                    disabled={!!editingConta?.purchaseInvoiceId} />
                             </div>
 
                             {/* Data */}
@@ -700,8 +742,9 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                             {/* Fornecedor */}
                             <div className="space-y-1.5">
                                 <Label htmlFor="sup">Fornecedor</Label>
-                                <select id="sup" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    value={supplierId} onChange={e => setSupplierId(e.target.value)}>
+                                <select id="sup" className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${editingConta?.purchaseInvoiceId ? "opacity-60 cursor-not-allowed bg-muted" : ""}`}
+                                    value={supplierId} onChange={e => setSupplierId(e.target.value)}
+                                    disabled={!!editingConta?.purchaseInvoiceId}>
                                     <option value="">Selecione (opcional)</option>
                                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
@@ -716,28 +759,6 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
                                     {expenseCategories.map(c => (
                                         <option key={c.id} value={c.id}>{c.code ? `${c.code} — ` : ""}{c.name}</option>
                                     ))}
-                                </select>
-                            </div>
-
-                            {/* Conta Financeira */}
-                            <div className="space-y-1.5">
-                                <Label htmlFor="cf">Conta Financeira</Label>
-                                <select id="cf" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    value={contaFinanceiraId} onChange={e => setContaFinanceiraId(e.target.value)}>
-                                    <option value="">Selecione (opcional)</option>
-                                    {contasFinanceiras.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name} {c.isDefault ? "⭐" : ""} ({c.tipo})</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Status */}
-                            <div className="space-y-1.5">
-                                <Label htmlFor="st">Status da Primeira</Label>
-                                <select id="st" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    value={status} onChange={e => setStatus(e.target.value as "pending" | "paid")}>
-                                    <option value="pending">A Pagar (Pendente)</option>
-                                    <option value="paid">Já Paga</option>
                                 </select>
                             </div>
                         </div>
@@ -832,89 +853,133 @@ export function ContasPagarClient({ contas, categories = [], suppliers = [], con
             )}
 
             {/* ── Dialog de Confirmação de Pagamento ── */}
-            {payingConta && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center">
-                    {/* Overlay */}
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setPayingConta(null); setPayContaFinanceiraId("") }} />
-                    {/* Modal */}
-                    <div className="relative bg-card rounded-xl border shadow-2xl w-full max-w-md mx-4 animate-in fade-in zoom-in-95 duration-200">
-                        <div className="bg-gradient-to-r from-emerald-500/10 to-blue-500/10 px-6 py-4 rounded-t-xl border-b">
-                            <div className="flex items-center gap-2">
-                                <Wallet className="h-5 w-5 text-emerald-600" />
-                                <h3 className="font-semibold text-lg">Confirmar Pagamento</h3>
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-0.5">De qual conta sairá o dinheiro?</p>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            {/* Info da despesa */}
-                            <div className="rounded-lg bg-muted/50 p-3 space-y-1">
-                                <p className="font-medium">{payingConta.description}</p>
-                                <p className="text-lg font-bold text-red-500">{formatBRL(payingConta.amount)}</p>
-                                {payingConta.supplierName && (
-                                    <p className="text-xs text-muted-foreground">{payingConta.supplierName}</p>
-                                )}
-                            </div>
-
-                            {/* Seleção da conta */}
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium flex items-center gap-1.5">
-                                    <Building2 className="h-4 w-4" />
-                                    Conta de Saída *
-                                </Label>
-                                <div className="grid gap-2">
-                                    {contasFinanceiras.map(cf => (
-                                        <button
-                                            key={cf.id}
-                                            type="button"
-                                            onClick={() => setPayContaFinanceiraId(cf.id)}
-                                            className={`flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all ${payContaFinanceiraId === cf.id
-                                                ? "border-primary bg-primary/5 shadow-sm"
-                                                : "border-muted hover:border-muted-foreground/30"
-                                                }`}
-                                        >
-                                            <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${payContaFinanceiraId === cf.id ? "bg-primary/10" : "bg-muted"
-                                                }`}>
-                                                {cf.tipo === "BANCO" ? (
-                                                    <Building2 className={`h-4 w-4 ${payContaFinanceiraId === cf.id ? "text-primary" : "text-muted-foreground"}`} />
-                                                ) : (
-                                                    <Wallet className={`h-4 w-4 ${payContaFinanceiraId === cf.id ? "text-primary" : "text-muted-foreground"}`} />
-                                                )}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className={`text-sm font-medium ${payContaFinanceiraId === cf.id ? "text-primary" : ""}`}>
-                                                    {cf.name} {cf.isDefault ? "⭐" : ""}
-                                                </p>
-                                                <p className="text-xs text-muted-foreground">{cf.tipo}</p>
-                                            </div>
-                                            {payContaFinanceiraId === cf.id && (
-                                                <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                                            )}
-                                        </button>
-                                    ))}
+            {payingConta && (() => {
+                const totalPay = payEntries.reduce((s, e) => s + (parseFloat(e.amount.replace(/\./g, "").replace(",", ".") || "0") || 0), 0)
+                const remaining = payingConta.amount - totalPay
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center">
+                        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setPayingConta(null); setPayEntries([{ contaFinanceiraId: "", amount: "" }]) }} />
+                        <div className="relative bg-card rounded-xl border shadow-2xl w-full max-w-lg mx-4 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+                            <div className="bg-gradient-to-r from-emerald-500/10 to-blue-500/10 px-6 py-4 rounded-t-xl border-b">
+                                <div className="flex items-center gap-2">
+                                    <Wallet className="h-5 w-5 text-emerald-600" />
+                                    <h3 className="font-semibold text-lg">Confirmar Pagamento</h3>
                                 </div>
-                                {contasFinanceiras.length === 0 && (
-                                    <p className="text-sm text-muted-foreground text-center py-2">Nenhuma conta financeira cadastrada.</p>
-                                )}
+                                <p className="text-sm text-muted-foreground mt-0.5">Selecione a(s) conta(s) e o valor de cada lançamento</p>
                             </div>
+                            <div className="p-6 space-y-4">
+                                {/* Info da despesa */}
+                                <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+                                    <p className="font-medium">{payingConta.description}</p>
+                                    <p className="text-lg font-bold text-red-500">{formatBRL(payingConta.amount)}</p>
+                                    {payingConta.supplierName && (
+                                        <p className="text-xs text-muted-foreground">{payingConta.supplierName}</p>
+                                    )}
+                                </div>
 
-                            {/* Ações */}
-                            <div className="flex justify-end gap-2 pt-2 border-t">
-                                <Button variant="outline" onClick={() => { setPayingConta(null); setPayContaFinanceiraId("") }}>
-                                    Cancelar
-                                </Button>
-                                <Button
-                                    onClick={handleConfirmarPagamento}
-                                    disabled={!payContaFinanceiraId || loading === payingConta.id}
-                                    className="gap-1.5"
-                                >
-                                    <CheckCircle className="h-4 w-4" />
-                                    {loading === payingConta.id ? "Processando..." : "Confirmar Pagamento"}
-                                </Button>
+                                {/* Entradas de pagamento */}
+                                <div className="space-y-3">
+                                    {payEntries.map((entry, idx) => {
+                                        const selectedCf = contasFinanceiras.find(c => c.id === entry.contaFinanceiraId)
+                                        return (
+                                            <div key={idx} className="rounded-lg border p-3 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <Label className="text-xs font-medium text-muted-foreground">Pagamento {idx + 1}</Label>
+                                                    {payEntries.length > 1 && (
+                                                        <button type="button" onClick={() => removePayEntry(idx)} className="text-xs text-destructive hover:underline">Remover</button>
+                                                    )}
+                                                </div>
+                                                {/* Seleção da conta */}
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-sm flex items-center gap-1.5">
+                                                        <Building2 className="h-3.5 w-3.5" /> Conta *
+                                                    </Label>
+                                                    <select
+                                                        value={entry.contaFinanceiraId}
+                                                        onChange={e => updatePayEntry(idx, "contaFinanceiraId", e.target.value)}
+                                                        className="flex h-9 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                    >
+                                                        <option value="">Selecione...</option>
+                                                        {contasFinanceiras.map(cf => {
+                                                            const avail = getAvailable(cf)
+                                                            const isCard = cf.subType === "CARTAO_CREDITO"
+                                                            return (
+                                                                <option key={cf.id} value={cf.id}>
+                                                                    {cf.name} {cf.isDefault ? "⭐" : ""} — {isCard ? `Limite: ${formatBRL(avail)}` : `Saldo: ${formatBRL(avail)}`}
+                                                                </option>
+                                                            )
+                                                        })}
+                                                    </select>
+                                                </div>
+                                                {/* Info de saldo/limite */}
+                                                {selectedCf && (
+                                                    <div className={`text-xs px-2 py-1 rounded-md ${selectedCf.subType === "CARTAO_CREDITO"
+                                                        ? "bg-violet-500/10 text-violet-700 dark:text-violet-400"
+                                                        : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                                        }`}>
+                                                        {selectedCf.subType === "CARTAO_CREDITO"
+                                                            ? `💳 Limite disponível: ${formatBRL(getAvailable(selectedCf))}`
+                                                            : `🏦 Saldo disponível: ${formatBRL(getAvailable(selectedCf))}`
+                                                        }
+                                                    </div>
+                                                )}
+                                                {/* Valor */}
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-sm">Valor *</Label>
+                                                    <CurrencyInput
+                                                        placeholder="R$ 0,00"
+                                                        decimalsLimit={2}
+                                                        prefix="R$ "
+                                                        value={entry.amount}
+                                                        onValueChange={v => updatePayEntry(idx, "amount", v || "")}
+                                                        className="flex h-9 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+
+                                    <button
+                                        type="button"
+                                        onClick={addPayEntry}
+                                        className="w-full rounded-lg border-2 border-dashed py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                                    >
+                                        + Adicionar outra forma de pagamento
+                                    </button>
+                                </div>
+
+                                {/* Resumo */}
+                                <div className="rounded-lg bg-muted/50 p-3 flex justify-between items-center">
+                                    <span className="text-sm font-medium">Total informado:</span>
+                                    <span className={`text-sm font-bold ${Math.abs(remaining) < 0.01 ? "text-emerald-600" : "text-red-500"}`}>
+                                        {formatBRL(totalPay)}
+                                        {Math.abs(remaining) >= 0.01 && (
+                                            <span className="text-xs font-normal ml-1">
+                                                ({remaining > 0 ? `falta ${formatBRL(remaining)}` : `excede ${formatBRL(Math.abs(remaining))}`})
+                                            </span>
+                                        )}
+                                    </span>
+                                </div>
+
+                                {/* Ações */}
+                                <div className="flex justify-end gap-2 pt-2 border-t">
+                                    <Button variant="outline" onClick={() => { setPayingConta(null); setPayEntries([{ contaFinanceiraId: "", amount: "" }]) }}>
+                                        Cancelar
+                                    </Button>
+                                    <Button
+                                        onClick={handleConfirmarPagamento}
+                                        disabled={payEntries.some(e => !e.contaFinanceiraId) || Math.abs(remaining) >= 0.01 || loading === payingConta.id}
+                                        className="gap-1.5"
+                                    >
+                                        <CheckCircle className="h-4 w-4" />
+                                        {loading === payingConta.id ? "Processando..." : "Confirmar Pagamento"}
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            })()}
 
             {/* ── Popup Tarefas Pendentes ── */}
             {showPendentes && (

@@ -295,6 +295,13 @@ export async function processSale(tenantId: string, userId: string | null, data:
                             taxaAplicada: 0,
                         } as any
                     })
+                    // Incrementar saldo da conta financeira
+                    if (payContaId) {
+                        await tx.contaFinanceira.update({
+                            where: { id: payContaId },
+                            data: { balance: { increment: payment.amount } },
+                        })
+                    }
                 } else if (isParcelado && isInstallable) {
                     // Parcelado (com ou sem maquininha)
                     const valorBrutoParcela = payment.amount / parcelas
@@ -399,6 +406,13 @@ export async function processSale(tenantId: string, userId: string | null, data:
                             taxaAplicada: 0,
                         } as any
                     })
+                    // Incrementar saldo da conta financeira
+                    if (payContaId) {
+                        await tx.contaFinanceira.update({
+                            where: { id: payContaId },
+                            data: { balance: { increment: payment.amount } },
+                        })
+                    }
                 }
             }
 

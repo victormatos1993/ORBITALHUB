@@ -19,6 +19,8 @@ export default async function ContasPagarPage() {
         isDefault: c.isDefault,
         purpose: c.purpose || "RECEBIMENTO",
         subType: c.subType || null,
+        balance: Number(c.balance || 0),
+        creditLimit: c.creditLimit ? Number(c.creditLimit) : null,
     }))
 
     const serializedCategories = categories.map((c: any) => ({
