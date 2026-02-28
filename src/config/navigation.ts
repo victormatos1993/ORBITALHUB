@@ -130,9 +130,13 @@ export const navigationRoutes: NavRoute[] = [
         roles: ["ADMINISTRADOR"],
     },
     {
-        label: "Conexões",
+        label: "Integrações",
         icon: Plug,
-        href: "/dashboard/conexoes",
+        href: "/dashboard/integracoes",
         roles: ["ADMINISTRADOR"],
+        items: [
+            { name: "Central de Integrações", href: "/dashboard/integracoes" },
+            { name: "Nuvemshop", href: "/dashboard/integracoes/nuvemshop" },
+        ],
     },
 ]

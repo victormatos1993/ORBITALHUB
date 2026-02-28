@@ -53,6 +53,7 @@ model User {
   createdSupplierQuotes SupplierQuote[] @relation("SupplierQuoteCreator")
   parentAdmin         User?          @relation("TeamMembers", fields: [parentAdminId], references: [id])
   teamMembers         User[]         @relation("TeamMembers")
+  nuvemshopConfig     NuvemshopConfig?
 }
 
 /// Central de Notificações — registra todas as notificações geradas pelo sistema
@@ -375,12 +376,13 @@ model Sale {
   shippingCost   Decimal?
   shippingStatus String?
   freightPaidBy  String?       @default("CLIENTE") // CLIENTE ou EMPRESA (frete grátis para o cliente)
-  paymentMethod  String?       // PIX, DINHEIRO, CREDITO, DEBITO, VOUCHER, CHEQUE, CARNE, BOLETO
-  paymentType    String?       // A_VISTA, PARCELADO
-  installments   Int?          // número de parcelas (para CREDITO, CARNE, BOLETO)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  createdById    String?
+  paymentMethod       String?       // PIX, DINHEIRO, CREDITO, DEBITO, VOUCHER, CHEQUE, CARNE, BOLETO
+  paymentType         String?       // A_VISTA, PARCELADO
+  installments        Int?          // número de parcelas (para CREDITO, CARNE, BOLETO)
+  nuvemshopOrderId    String?       // ID do pedido na Nuvemshop (deduplicação)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  createdById         String?
   carrier        Supplier?     @relation("CarrierSales", fields: [carrierId], references: [id])
   createdBy      User?         @relation("SaleCreator", fields: [createdById], references: [id])
   customer       Customer?     @relation("CustomerSales", fields: [customerId], references: [id])
@@ -597,3 +599,18 @@ model ShipmentOrder {
 
   @@index([userId, status])
 }
+
+/// Integração Nuvemshop — credenciais e configurações por tenant
+model NuvemshopConfig {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  storeId      String
+  accessToken  String
+  syncEnabled  Boolean   @default(true)
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
