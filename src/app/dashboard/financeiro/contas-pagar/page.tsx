@@ -15,8 +15,10 @@ export default async function ContasPagarPage() {
     const serializedContas = contasFinanceiras.map((c: any) => ({
         id: c.id,
         name: c.name,
-        tipo: c.tipo,
+        tipo: c.type,
         isDefault: c.isDefault,
+        purpose: c.purpose || "RECEBIMENTO",
+        subType: c.subType || null,
     }))
 
     const serializedCategories = categories.map((c: any) => ({

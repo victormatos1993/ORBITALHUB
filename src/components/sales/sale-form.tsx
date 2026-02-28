@@ -70,7 +70,7 @@ import { getCustomers, createCustomer } from "@/app/actions/customer"
 import { getSuppliers } from "@/app/actions/supplier"
 import { getProducts } from "@/app/actions/product"
 import { getServices } from "@/app/actions/service"
-import { getContasFinanceiras } from "@/app/actions/conta-financeira"
+import { getContasRecebimento } from "@/app/actions/conta-financeira"
 import { getMaquinasCartao } from "@/app/actions/maquina-cartao"
 import { METODO_LABELS } from "@/lib/payment-constants"
 
@@ -197,7 +197,7 @@ export function SaleForm({
                 getSuppliers({ pageSize: 1000 }),
                 getProducts({ pageSize: 1000, productType: "VENDA", availableForSale: true }),
                 getServices(),
-                getContasFinanceiras(),
+                getContasRecebimento(),
                 getMaquinasCartao(),
             ])
             setCustomers(customersData.customers)

@@ -7,8 +7,8 @@ export default async function ContasBancariasPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold">Contas Bancárias</h1>
-                <p className="text-muted-foreground">Gerencie seus caixas, bancos e carteiras digitais</p>
+                <h1 className="text-2xl font-bold">Contas e Cartões</h1>
+                <p className="text-muted-foreground">Gerencie suas contas de recebimento, pagamento e cartões de crédito</p>
             </div>
             <ContasBancariasClient contas={JSON.parse(JSON.stringify(contas))} />
         </div>

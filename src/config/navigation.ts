@@ -64,7 +64,7 @@ export const navigationRoutes: NavRoute[] = [
             { name: "Contas a Receber", href: "/dashboard/financeiro/contas-receber" },
             { name: "Receitas", href: "/dashboard/financeiro/receitas" },
             { name: "Despesas Pagas", href: "/dashboard/financeiro/despesas" },
-            { name: "Contas Bancárias", href: "/dashboard/financeiro/contas" },
+            { name: "Contas e Cartões", href: "/dashboard/financeiro/contas" },
             { name: "Maquininhas", href: "/dashboard/financeiro/maquininhas" },
             { name: "Plano de Contas", href: "/dashboard/financeiro/categorias" },
         ],

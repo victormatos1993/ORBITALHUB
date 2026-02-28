@@ -232,17 +232,26 @@ model Transaction {
   user               User              @relation(fields: [userId], references: [id])
 }
 
-/// Contas financeiras — onde o dinheiro está (Caixa, Banco, Carteira Digital)
+/// Contas financeiras — Recebimento (vendas) ou Pagamento (despesas/cartões)
 model ContaFinanceira {
   id           String        @id @default(cuid())
   name         String
   type         String        // CAIXA | BANCO | CARTEIRA_DIGITAL
+  purpose      String        @default("RECEBIMENTO") // RECEBIMENTO | PAGAMENTO
+  subType      String?       // CONTA_BANCARIA | CARTAO_CREDITO (apenas para PAGAMENTO)
   balance      Decimal       @default(0)
   active       Boolean       @default(true)
   isDefault    Boolean       @default(false)
   userId       String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+
+  // ── Campos exclusivos de Cartão de Crédito ──
+  closingDay   Int?          // dia de fechamento da fatura (1-31)
+  dueDay       Int?          // dia de vencimento da fatura (1-31)
+  cardBrand    String?       // bandeira do cartão (Visa, Mastercard, etc)
+  creditLimit  Decimal?      // limite de crédito
+
   user         User          @relation(fields: [userId], references: [id])
   transactions Transaction[]
   purchaseInvoices PurchaseInvoice[]
